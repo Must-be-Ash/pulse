@@ -87,4 +87,4 @@ python3.12 scripts/pulse.py "Claude Code skills" --quick --emit=compact
 
 ## Credits
 
-Forked from [Must-be-Ash/last30days-crypto](https://github.com/Must-be-Ash/last30days-crypto) v3.0.0, which is itself built on [mvanhorn/last30days-skill](https://github.com/mvanhorn/last30days-skill) — the original multi-source research engine this whole family of skills is built on.
+Built on [mvanhorn/last30days-skill](https://github.com/mvanhorn/last30days-skill) — the original multi-source research engine this whole family of skills is built on.
