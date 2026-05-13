@@ -52,7 +52,7 @@ Tracks what the builder community is actually adopting, excited about, and talki
 
 **The test:** "Are independent builders genuinely excited about and adopting this — or is it just PR from a company with marketing budget?" If independent builders are talking enthusiastically about something a prominent person shipped, that's Zeitgeist. If it's just a company's press release that nobody discussed organically, it's not.
 
-**Lookback: 21 days.** Trends take slightly longer to surface than tool releases.
+**Lookback: 7 days.** This is a weekly briefing — run it once a week. Anything older than 7 days is last week's news.
 
 ---
 
@@ -103,40 +103,42 @@ The goal is to find what builders are genuinely excited about and using — high
     {
       "label": "builder_excitement",
       "search_query": "{TOPIC} builders using loving shipped tool 2026",
-      "ranking_query": "What tools, frameworks, approaches, or launches related to {TOPIC} are independent builders genuinely excited about, actively using, or recommending to each other right now?",
-      "sources": ["x", "hackernews", "reddit"],
+      "ranking_query": "What tools, frameworks, approaches, or launches related to {TOPIC} are independent builders genuinely excited about, actively using, or recommending to each other this week?",
+      "sources": ["x", "hackernews"],
       "weight": 1.0
     },
     {
       "label": "trending_adoption",
-      "search_query": "{TOPIC} trending viral popular builders 2026",
-      "ranking_query": "What is getting significant organic traction among builders and developers related to {TOPIC}? What are they actively installing, starring, and discussing?",
+      "search_query": "{TOPIC} trending popular builders 2026",
+      "ranking_query": "What is getting significant organic traction among builders and developers related to {TOPIC} this week? What are they actively installing, starring, and discussing?",
       "sources": ["x", "hackernews", "github"],
       "weight": 0.9
     },
     {
       "label": "yc_and_funding",
       "search_query": "YC W26 S26 startup launched AI developer tools 2026",
-      "ranking_query": "What YC-funded or recently funded startups in developer tools or AI have launched and are getting genuine builder traction?",
+      "ranking_query": "What YC-funded or recently funded startups in developer tools or AI have launched and are getting genuine builder traction this week?",
       "sources": ["x", "hackernews", "grounding"],
       "weight": 0.8
     },
     {
       "label": "paradigm_shifts",
       "search_query": "{TOPIC} paradigm shift how builders work changing approach",
-      "ranking_query": "What is genuinely changing how builders work — new workflows, adopted patterns, or tools that builders are switching to from something else?",
-      "sources": ["x", "hackernews", "reddit"],
-      "weight": 0.7
+      "ranking_query": "What is genuinely changing how builders work this week — new workflows, adopted patterns, or tools that builders are switching to?",
+      "sources": ["x", "hackernews"],
+      "weight": 0.6
     }
   ]
 }
 ```
 
+**Source weights for pulse-tech:** X/Twitter = 1.0 (primary — this is where builder culture lives). HN = 0.8 (high signal for builder discussion). GitHub = 0.4 (trending as adoption signal). Reddit = not used — too slow and noisy for a 7-day weekly signal.
+
 ---
 
 ## Research Execution
 
-**Run FOREGROUND, 5-minute timeout. `--lookback-days=21`.**
+**Run FOREGROUND, 5-minute timeout. `--lookback-days=7` — weekly signal only.**
 
 ```bash
 "${PULSE_PYTHON}" "${SKILL_ROOT}/scripts/pulse.py" "$TOPIC" \
@@ -144,7 +146,7 @@ The goal is to find what builders are genuinely excited about and using — high
   --emit=compact \
   --save-dir=~/Documents/Pulse \
   --save-suffix=v2 \
-  --lookback-days=21 \
+  --lookback-days=7 \
   --plan "$QUERY_PLAN_JSON"
 ```
 
@@ -176,7 +178,7 @@ The question for each item is not "is this the best tool?" but "are builders act
 - HN comments discussing actual usage ("I've been using this...") > discussion posts
 - GitHub stars on repos in last 7 days: moderate weight (organic adoption signal)
 - Multiple independent builders recommending same thing: strong signal
-- Reddit r/LocalLLaMA, r/ClaudeAI, r/MachineLearning discussion: medium weight
+- HN comments discussing actual usage ("I've been using this for a week..."): strong signal
 
 **For each signal, explain:**
 1. What it is and what builders are doing with it
@@ -198,7 +200,7 @@ KEY PATTERNS:
 2. {What builders are moving away from or toward}
 
 ---
-X ({N} posts, {top builder likes}) | HN ({N} stories, {N} comments) | GitHub ({N} trending) | Reddit ({N} threads)
+X ({N} posts, top: @{handle} {N} likes) | HN ({N} stories, {N} comments) | GitHub ({N} trending)
 📡 Raw: ~/Documents/Pulse/{slug}-raw-v2.md
 ---
 ```
