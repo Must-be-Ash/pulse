@@ -1,0 +1,26 @@
+[project]
+name = "pulse"
+version = "1.0.0"
+description = "Builder intelligence research engine — Twitter-first discovery of tools, signals, and trends for builders of web and AI apps"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "requests>=2.32,<3",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=9,<10",
+  "pytest-cov>=7,<8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = [
+  "-q",
+  "--tb=short",
+]
+
+[project.scripts]
+pulse = "scripts.pulse:main"
