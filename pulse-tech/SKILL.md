@@ -1,8 +1,8 @@
 ---
 name: pulse-tech
-version: "2.0.0"
-description: "Pipeline-powered builder intelligence — emerging techniques, YC launches, funding signals, and ecosystem shifts that would go unnoticed. Biased toward fresh signals over viral noise. Ends with ElevenLabs audio + HTML report."
-argument-hint: 'pulse-tech, pulse-tech YC, pulse-tech AI agents, pulse-tech knowledge graph'
+version: "2.1.0"
+description: "Zeitgeist tracker for builders — what the builder community is actually adopting, excited about, and talking about. Trends, viral tools, paradigm shifts, YC launches, funding. pulse-tools finds hidden value; pulse-tech tracks what's resonating."
+argument-hint: 'pulse-tech, pulse-tech YC, pulse-tech AI agents, pulse-tech trends'
 allowed-tools: WebSearch, Bash, Read, Write, mcp__agentcash__fetch, mcp__agentcash__get_balance
 user-invocable: true
 metadata:
@@ -28,23 +28,31 @@ metadata:
       - trends
       - yc
       - funding
-      - signals
       - zeitgeist
       - builder-intel
       - twitter
       - hackernews
 ---
 
-# /pulse-tech v2.0.0: Fresh Builder Intelligence (Pipeline)
+# /pulse-tech v2.1.0: Builder Zeitgeist (Pipeline)
 
-Surfaces signals about where the builder ecosystem is heading — YC launches, funding, emerging techniques, paradigm shifts — with a bias toward **what's new and under-discussed**, not what's already viral. The signal you want is the one most people haven't noticed yet.
+Tracks what the builder community is actually adopting, excited about, and talking about right now. Trends, viral tools, paradigm shifts, YC launches, funding signals. This is the pulse of builder culture — not a quality judgment, but a calibration tool for staying in sync with the ecosystem.
 
-**Hard rules:**
-- Lookback: **21 days** for signals (trends develop a bit slower than tool releases)
-- Reject: mainstream corporate news (OpenAI announcements, Google I/O, Vercel releases)
-- Reject: anything that's already in every newsletter — if it got >10K likes on a single tweet it's already viral
-- Prefer: founder threads, niche builder discussions, YC launches that aren't front-page yet
-- No Reddit — Reddit engagement lags and inflates old discussions
+**The split between pulse-tools and pulse-tech:**
+- **`/pulse-tools`** — finds things builders *should* know about but might not. Value-first, underrated-first. Ignores hype.
+- **`/pulse-tech`** — tracks things builders *do* know about and are actively excited about. Trend-first, adoption-first. Hype is the signal.
+
+**What belongs here:** gstack has 95K stars because Garry Tan posted it and his followers loved it. That's Zeitgeist — builders are actually using it. Knowing that gstack is trending tells you something real about what the community values right now. That's pulse-tech territory.
+
+**What does NOT belong here:**
+- Corporate product announcements from OpenAI, Google, Anthropic, Vercel, AWS — these are PR, not organic builder excitement
+- Investor/VC press releases about valuations — unless builders are organically excited
+- News articles covering tech companies — unless there's genuine builder discussion behind it
+- Things builders are NOT actually adopting (papers nobody implements, launches nobody uses)
+
+**The test:** "Are independent builders genuinely excited about and adopting this — or is it just PR from a company with marketing budget?" If independent builders are talking enthusiastically about something a prominent person shipped, that's Zeitgeist. If it's just a company's press release that nobody discussed organically, it's not.
+
+**Lookback: 21 days.** Trends take slightly longer to surface than tool releases.
 
 ---
 
@@ -68,23 +76,23 @@ done
 
 ## Step 0: Setup
 
-Check `~/.config/pulse/.env` for `SETUP_COMPLETE=true`. If missing: run setup wizard (`"${PULSE_PYTHON}" "${SKILL_ROOT}/scripts/pulse.py" setup`). Skip silently if done.
+Check `~/.config/pulse/.env` for `SETUP_COMPLETE=true`. Run setup wizard if missing. Skip silently if done.
 
 ---
 
 ## Step 1: Parse Intent
 
-- `/pulse-tech` → TOPIC = "developer tools AI agent building startup trend 2026"
-- `/pulse-tech YC` → TOPIC = "Y Combinator YC startup launch 2026"
-- `/pulse-tech knowledge graph` → TOPIC = "knowledge graph technique AI builder"
+- `/pulse-tech` → TOPIC = "developer tools AI agent building startup trend"
+- `/pulse-tech YC` → TOPIC = "Y Combinator YC startup launch"
+- `/pulse-tech AI agents` → TOPIC = "AI agent builder tooling"
 
-Display: `📡 /pulse-tech — scanning for fresh signals on {TOPIC}.`
+Display: `📡 /pulse-tech — scanning for what builders are actually adopting: {TOPIC}.`
 
 ---
 
-## Step 0.75: Generate Query Plan (FRESHNESS-FIRST, UNDER-THE-RADAR)
+## Step 0.75: Generate Query Plan (ADOPTION-SIGNAL-FIRST)
 
-The goal is to find signals that are real but not yet mainstream. Prioritise: founder/builder posts over press releases, niche HN discussions over front-page threads, small funded startups over unicorns.
+The goal is to find what builders are genuinely excited about and using — high engagement from the builder community is THE signal here, not something to filter out.
 
 ```json
 {
@@ -93,32 +101,32 @@ The goal is to find signals that are real but not yet mainstream. Prioritise: fo
   "cluster_mode": "story",
   "subqueries": [
     {
-      "label": "fresh_builder_x",
-      "search_query": "{TOPIC} launched announced released shipped 2026",
-      "ranking_query": "What new startups, tools, techniques, or approaches related to {TOPIC} have founders or builders announced or shipped in the last 3 weeks that haven't been widely covered yet?",
-      "sources": ["x", "hackernews"],
+      "label": "builder_excitement",
+      "search_query": "{TOPIC} builders using loving shipped tool 2026",
+      "ranking_query": "What tools, frameworks, approaches, or launches related to {TOPIC} are independent builders genuinely excited about, actively using, or recommending to each other right now?",
+      "sources": ["x", "hackernews", "reddit"],
       "weight": 1.0
     },
     {
-      "label": "yc_niche_launches",
-      "search_query": "YC W26 S26 launched developer AI builder tool small startup 2026",
-      "ranking_query": "What smaller or less-covered YC-backed startups focused on developer tools, AI infrastructure, or research tooling have recently launched or shared updates?",
-      "sources": ["x", "hackernews", "grounding"],
+      "label": "trending_adoption",
+      "search_query": "{TOPIC} trending viral popular builders 2026",
+      "ranking_query": "What is getting significant organic traction among builders and developers related to {TOPIC}? What are they actively installing, starring, and discussing?",
+      "sources": ["x", "hackernews", "github"],
       "weight": 0.9
     },
     {
-      "label": "technique_discovery",
-      "search_query": "{TOPIC} technique approach method pattern how builders use 2026",
-      "ranking_query": "What emerging techniques, implementation approaches, or architectural patterns related to {TOPIC} are builders discussing that represent genuine new approaches vs repackaging old ideas?",
-      "sources": ["hackernews", "x", "grounding"],
+      "label": "yc_and_funding",
+      "search_query": "YC W26 S26 startup launched AI developer tools 2026",
+      "ranking_query": "What YC-funded or recently funded startups in developer tools or AI have launched and are getting genuine builder traction?",
+      "sources": ["x", "hackernews", "grounding"],
       "weight": 0.8
     },
     {
-      "label": "funding_niche",
-      "search_query": "seed round Series A developer tool AI infrastructure 2026 small",
-      "ranking_query": "What seed-stage or early Series A companies in the developer tools or AI space have announced funding recently that signal where investors see opportunity?",
-      "sources": ["grounding", "x"],
-      "weight": 0.6
+      "label": "paradigm_shifts",
+      "search_query": "{TOPIC} paradigm shift how builders work changing approach",
+      "ranking_query": "What is genuinely changing how builders work — new workflows, adopted patterns, or tools that builders are switching to from something else?",
+      "sources": ["x", "hackernews", "reddit"],
+      "weight": 0.7
     }
   ]
 }
@@ -128,7 +136,7 @@ The goal is to find signals that are real but not yet mainstream. Prioritise: fo
 
 ## Research Execution
 
-**Run in FOREGROUND, 5-minute timeout. Use `--lookback-days=21`.**
+**Run FOREGROUND, 5-minute timeout. `--lookback-days=21`.**
 
 ```bash
 "${PULSE_PYTHON}" "${SKILL_ROOT}/scripts/pulse.py" "$TOPIC" \
@@ -140,78 +148,81 @@ The goal is to find signals that are real but not yet mainstream. Prioritise: fo
   --plan "$QUERY_PLAN_JSON"
 ```
 
-**Read the ENTIRE output.**
-
 ---
 
-## Judge Agent: Synthesize (UNDER-THE-RADAR FIRST)
+## Judge Agent: Synthesize (BUILDER ADOPTION SIGNAL)
 
-**RE-RANK the engine output yourself — override engagement-based scoring:**
+**This is NOT a quality filter — it's an adoption/resonance filter.**
 
-Rank by:
-1. **Recency** — last 7 days scores highest
-2. **Novelty of signal** — genuine paradigm shift vs derivative opinion
-3. **Under-the-radar** — fewer than 500 likes/upvotes but substantive = higher score than 5K likes on something obvious
-4. **Actionability** — does this change what you'd build or how you'd build it?
+The question for each item is not "is this the best tool?" but "are builders actually adopting and excited about this?"
 
-**HARD EXCLUSIONS:**
-- Corporate press releases from: OpenAI, Anthropic, Google, Microsoft, AWS, Vercel, Meta, Apple → skip (you'll see these anyway)
-- Anything already front-page viral (>5K likes on a single X post) → skip (already in your feed)
-- "Thoughts on X" opinion without new data or evidence → skip
-- Funding rounds >$50M → skip (already covered everywhere)
-- Older than 21 days → skip
+**KEEP — genuine builder Zeitgeist:**
+- Tools or frameworks that builders are actively using, recommending, discussing — even if they're not technically the most impressive
+- YC launches or funded startups getting real organic traction from independent builders
+- Paradigm shifts — patterns that builders are genuinely switching to ("I've been doing X but now everyone's using Y")
+- What's trending on HN front page among builders
+- Repos gaining stars organically from builder community (not just from follower count of poster)
+- Things people are building WITH (not just building) — "everyone's using X to make Y now"
 
-**KEEP — genuine signals:**
-- Founder/builder posts announcing what they shipped (not press releases)
-- YC S26/W26 launches that haven't been picked up widely yet
-- Seed rounds (<$10M) in interesting categories that signal where smart money is going
-- Technique discoveries shared in HN threads or niche X posts by practitioners
-- Behavioural signals: "builders are moving from X to Y", "CLI is replacing MCP for X use case"
-- Anything that would make you say "I didn't know this was happening"
+**REJECT — not builder Zeitgeist:**
+- Corporate press releases from OpenAI, Google, Anthropic, AWS, Vercel, Meta — even if they make good tools, the announcement itself is PR not organic builder excitement. Surface it ONLY if there's genuine builder discussion and adoption behind it.
+- Investor/VC announcements about valuations or funding rounds without real builder discussion
+- News articles that aren't backed by actual builder enthusiasm
+- Research papers that builders aren't actually implementing
+- Things that look popular but aren't builder-relevant (e.g., consumer app trends)
 
-**For each signal, output WHY it matters** — not just what it is, but what it implies about where things are heading.
+**SCORING — weight by builder adoption signal:**
+- X likes from independent builder accounts (not corporate): high weight
+- HN comments discussing actual usage ("I've been using this...") > discussion posts
+- GitHub stars on repos in last 7 days: moderate weight (organic adoption signal)
+- Multiple independent builders recommending same thing: strong signal
+- Reddit r/LocalLLaMA, r/ClaudeAI, r/MachineLearning discussion: medium weight
+
+**For each signal, explain:**
+1. What it is and what builders are doing with it
+2. Why it's gaining traction — what need it fills that other things didn't
 
 **OUTPUT FORMAT:**
 
 ```
-📡 /pulse-tech — {YYYY-MM-DD}
+📡 /pulse-tech — {YYYY-MM-DD} (builder Zeitgeist)
 
-**{Signal Name}**
-{What happened — one sentence.} {Why this matters as a signal: what it tells you about where the ecosystem is heading — one sentence.}
-Source: X — @{handle} ({N} likes) | HN — {N}pts | {publication}
+**{Trend or Tool Name}**
+{What builders are doing with it — one sentence.} {Why it's resonating — what builder need it hits that wasn't being met — one sentence.}
+Source: X — @{handle} ({N} builder likes) | HN — {N}pts, {N} comments | GitHub — {N}⭐ this week
 
-[5–8 signals, freshest and most underrated first]
+[5–8 signals, ordered by adoption strength]
 
-KEY PATTERNS (synthesise across all signals):
-1. {What these signals together suggest — a trend that isn't obvious from any single signal}
-2. {Second pattern}
+KEY PATTERNS:
+1. {What multiple signals together reveal about where builder culture is going}
+2. {What builders are moving away from or toward}
 
 ---
-X ({N} posts, top underrated: @{handle}) | HN ({N} stories) | Web ({N} pages) | {N} new signals
+X ({N} posts, {top builder likes}) | HN ({N} stories, {N} comments) | GitHub ({N} trending) | Reddit ({N} threads)
 📡 Raw: ~/Documents/Pulse/{slug}-raw-v2.md
 ---
 ```
 
 ---
 
-## Step: Audio Narration (ElevenLabs — paid, ~$0.026/run)
+## Audio Narration (ElevenLabs — paid, ~$0.026/run)
 
-### Write the script first (two segments, each ≤140 words)
+### Write the script (two segments, ≤140 words each)
 
-**Segment 1:** Open: *"Builder intelligence briefing, [weekday] [Month Day]. Here's what's moving under the radar."* → Top 2–3 signals (WHAT + WHY it matters as a signal). End: *"More signals coming up."*
+**Segment 1:** *"Builder Zeitgeist briefing, [weekday] [Month Day]. Here's what the builder community is actually excited about."* → Top 2–3 signals (what builders are using + why it's resonating). End: *"More signals coming up."*
 
-**Segment 2:** Remaining 2–3 signals → Close: *"That's your pulse-tech briefing. These signals are fresh — act on them before they're everywhere."*
+**Segment 2:** Remaining 2–3 signals. Close: *"That's your pulse-tech. Use /pulse-tools if you want the underrated stuff builders haven't found yet."*
 
-Rules: active voice, present tense, no URLs, no @handles, no markdown, spell out numbers. Trim to ≤140 words per segment.
+Rules: active voice, present tense, no URLs, no @handles, spell out numbers. ≤140 words per segment.
 
 ### Check balance and pick network
 
 Call `mcp__agentcash__get_balance`. Set `CHOSEN_NETWORK`:
 1. `"base"` if balance ≥ $0.03
-2. `"solana"` if Base is insufficient
-3. No funds → skip to macOS say fallback
+2. `"solana"` if Base insufficient
+3. No funds → macOS say fallback
 
-### Attempt ElevenLabs TTS
+### ElevenLabs TTS
 
 ```python
 result1 = mcp__agentcash__fetch(
@@ -232,24 +243,13 @@ result2 = mcp__agentcash__fetch(
 )
 ```
 
-Check each for `audio` or `audio_base64`. If both succeed:
+Check `audio` or `audio_base64`. If both succeed → concatenate bytes → save `~/Downloads/pulse-tech-{YYYYMMDD}.mp3` → `afplay`.
 
-```python
-import base64, datetime
-date = datetime.date.today().strftime('%Y%m%d')
-path = f"/Users/ashnouruzi/Downloads/pulse-tech-{date}.mp3"
-with open(path, 'wb') as f:
-    f.write(base64.b64decode(result1.get('audio') or result1.get('audio_base64')))
-    f.write(base64.b64decode(result2.get('audio') or result2.get('audio_base64')))
-```
+If CHOSEN_NETWORK fails: retry with other network. If both fail: macOS say fallback — no diagnosis.
 
-Play: `afplay "/Users/ashnouruzi/Downloads/pulse-tech-$(date +%Y%m%d).mp3"`
+### Fallback: macOS say
 
-**If payment fails:** retry with other network if it has balance. If both fail: macOS say fallback (below). No diagnosis, no retrying.
-
-### Fallback: macOS say (free)
-
-Write full narration (both segments combined) to `/tmp/pulse-tech-script-$(date +%Y%m%d).txt` using Write tool, then:
+Write combined narration to `/tmp/pulse-tech-script-$(date +%Y%m%d).txt` with Write tool, then:
 
 ```bash
 say -v Samantha -r 175 \
@@ -258,13 +258,11 @@ say -v Samantha -r 175 \
 afplay "/Users/ashnouruzi/Downloads/pulse-tech-$(date +%Y%m%d).aiff"
 ```
 
-Confirm: `🎙 ~/Downloads/pulse-tech-{YYYYMMDD}.mp3 (~120s, ~$0.026 USDC via {CHOSEN_NETWORK})` or `🔊 ~/Downloads/pulse-tech-{YYYYMMDD}.aiff (fallback)`
-
 ---
 
-## Step: HTML Report
+## HTML Report
 
-Generate self-contained HTML using the Write tool. Each signal gets a card: title, 2-sentence description, a **Signal:** line (what this implies about where things are heading), and clickable source links.
+Self-contained HTML with each signal as a card: title, 2-sentence description, a **Why it's resonating:** callout, clickable source links.
 
 ```html
 <!DOCTYPE html>
@@ -280,7 +278,7 @@ h1{font-size:1.6rem;font-weight:700;letter-spacing:-.02em}
 .item{background:#fff;border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1rem;box-shadow:0 1px 4px rgba(0,0,0,.08)}
 .title{font-size:1rem;font-weight:600;margin-bottom:.4rem}
 .desc{font-size:.875rem;color:#444;line-height:1.6;margin-bottom:.6rem}
-.signal{font-size:.8rem;color:#6e6e73;font-style:italic;margin-bottom:.8rem;line-height:1.5;padding:.5rem .75rem;background:#f0f5ff;border-left:3px solid #0066cc;border-radius:0 4px 4px 0}
+.resonance{font-size:.8rem;color:#1d6fa4;margin-bottom:.8rem;line-height:1.5;padding:.5rem .75rem;background:#e8f4fd;border-left:3px solid #1d6fa4;border-radius:0 4px 4px 0}
 .srcs{display:flex;gap:.5rem;flex-wrap:wrap}
 .src{font-size:.78rem;padding:.3rem .75rem;border-radius:6px;border:1px solid #d2d2d7;text-decoration:none;color:#0066cc;background:#fff}
 .src:hover{background:#f0f5ff;border-color:#0066cc}
@@ -289,27 +287,28 @@ footer{margin-top:2rem;color:#999;font-size:.78rem;border-top:1px solid #e5e5ea;
 </head>
 <body>
 <h1>📡 Pulse Tech</h1>
-<div class="sub">{DATE} · {N} signals · under-the-radar first · last 21 days</div>
+<div class="sub">{DATE} · {N} signals · builder Zeitgeist · last 21 days</div>
 
 <!-- For each signal: -->
 <div class="item">
   <div class="title">{TITLE}</div>
   <div class="desc">{DESCRIPTION}</div>
-  <div class="signal">Signal: {WHAT_THIS_IMPLIES_ABOUT_WHERE_THINGS_ARE_HEADING}</div>
+  <div class="resonance">Why it's resonating: {WHAT_BUILDER_NEED_IT_FILLS}</div>
   <div class="srcs">
     <a class="src" href="{URL}" target="_blank">{SOURCE_LABEL}</a>
   </div>
 </div>
 
-<footer>github.com/Must-be-Ash/pulse · /pulse-tech v2.0.0</footer>
+<footer>github.com/Must-be-Ash/pulse · /pulse-tech v2.1.0 · pair with /pulse-tools for underrated gems</footer>
 </body>
 </html>
 ```
 
-Note: the `signal` box uses a blue left-border style to visually distinguish the "so what" from the description.
-
-Save to `/Users/ashnouruzi/Downloads/pulse-tech-{YYYYMMDD}.html`, then:
-```bash
-open "/Users/ashnouruzi/Downloads/pulse-tech-$(date +%Y%m%d).html"
-```
+Save to `/Users/ashnouruzi/Downloads/pulse-tech-{YYYYMMDD}.html`, then `open`.
 Confirm: `📄 Report: ~/Downloads/pulse-tech-{YYYYMMDD}.html`
+
+---
+
+## Persona
+
+You are embedded in the builder community — you know what practitioners are actually shipping, adopting, and excited about. Your job is to reflect the real state of builder culture, not to curate quality. If 10,000 builders are using something mediocre, that tells you something real about where the community is. If something brilliant is going unnoticed, that's pulse-tools territory. You track the conversation.
