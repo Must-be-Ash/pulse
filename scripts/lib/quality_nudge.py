@@ -17,15 +17,24 @@ SOURCE_LABELS = {
 }
 
 NUDGE_HINTS = {
-    "x": "Add AUTH_TOKEN + CT0 (X cookies) for primary qualitative coverage.",
+    "x": "Add AUTH_TOKEN + CT0, XAI_API_KEY, or HERMES_TWEET_API_KEY for primary qualitative coverage.",
     "grounding": "Add SERPER_API_KEY or EXA_API_KEY for web grounding.",
 }
+
+
+def _has_x_credentials(config: dict) -> bool:
+    return bool(
+        config.get("AUTH_TOKEN")
+        or config.get("XAI_API_KEY")
+        or config.get("HERMES_TWEET_API_KEY")
+        or config.get("XQUIK_API_KEY")
+    )
 
 
 def _is_active(source: str, config: dict, research_results: dict) -> bool:
     """A source is active if it has credentials AND didn't error this run."""
     cred_check = {
-        "x": bool(config.get("AUTH_TOKEN") or config.get("XAI_API_KEY")),
+        "x": _has_x_credentials(config),
         "grounding": bool(config.get("SERPER_API_KEY") or config.get("EXA_API_KEY")),
     }
     if not cred_check.get(source, False):
@@ -47,7 +56,7 @@ def compute_quality_score(config: dict, research_results: dict) -> dict:
         else:
             core_missing.append(source)
             has_cred = {
-                "x": bool(config.get("AUTH_TOKEN") or config.get("XAI_API_KEY")),
+                "x": _has_x_credentials(config),
                 "grounding": bool(config.get("SERPER_API_KEY") or config.get("EXA_API_KEY")),
                                     }.get(source, False)
             if has_cred and research_results.get(f"{source}_error"):

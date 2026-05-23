@@ -14,6 +14,10 @@ metadata:
         - CT0
       optionalEnv:
         - XAI_API_KEY
+        - HERMES_TWEET_API_KEY
+        - XQUIK_API_KEY
+        - XQUIK_BASE_URL
+        - LAST30DAYS_X_BACKEND
         - EXA_API_KEY
         - BRAVE_API_KEY
         - SERPER_API_KEY
@@ -390,7 +394,7 @@ After displaying output, audio, and HTML — stop and wait. Do NOT run new searc
 
 ## Security & Permissions
 
-- Reads X/Twitter via AUTH_TOKEN/CT0 or XAI_API_KEY
+- Reads X/Twitter via AUTH_TOKEN/CT0, XAI_API_KEY, or Hermes Tweet with HERMES_TWEET_API_KEY
 - Reads HN via Algolia API (free, no auth)
 - Reads GitHub via public API or gh CLI
 - Reads web via Exa/Brave/Serper

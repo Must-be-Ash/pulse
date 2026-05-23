@@ -196,6 +196,8 @@ def get_setup_status_text(results: Dict[str, Any]) -> str:
 
 _OPENCLAW_KEY_NAMES = [
     "SCRAPECREATORS_API_KEY",
+    "HERMES_TWEET_API_KEY",
+    "XQUIK_API_KEY",
     "XAI_API_KEY",
     "BRAVE_API_KEY",
     "EXA_API_KEY",
@@ -222,8 +224,11 @@ def run_openclaw_setup(config: Dict[str, Any]) -> Dict[str, Any]:
         keys[short] = bool(config.get(key_name))
 
     # Determine x_method
-    if config.get("XAI_API_KEY"):
-        x_method: Optional[str] = "xai"
+    hermes_tweet_key = config.get("HERMES_TWEET_API_KEY") or config.get("XQUIK_API_KEY")
+    if (config.get("LAST30DAYS_X_BACKEND") or "").lower() == "hermes_tweet" and hermes_tweet_key:
+        x_method: Optional[str] = "hermes_tweet"
+    elif config.get("XAI_API_KEY"):
+        x_method = "xai"
     elif config.get("AUTH_TOKEN") and config.get("CT0"):
         x_method = "cookies"
     else:

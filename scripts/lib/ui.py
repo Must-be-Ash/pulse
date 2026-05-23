@@ -118,8 +118,8 @@ I just researched that for you. Here's what I've got right now:
 
 {status_line}
 
-X (AUTH_TOKEN + CT0 cookies) is the primary source — without it the skill leans
-on web grounding, HN, and GitHub. Add AUTH_TOKEN/CT0 or XAI_API_KEY to unlock X.
+X (AUTH_TOKEN + CT0 cookies) is the primary source. Without it the skill leans
+on web grounding, HN, and GitHub. Add AUTH_TOKEN/CT0, XAI_API_KEY, or HERMES_TWEET_API_KEY to unlock X.
 
 Some examples:
 - "/tools-pulse Claude Code skills"
@@ -129,7 +129,7 @@ Some examples:
 
 # Shorter promo for single missing key
 PROMO_SINGLE_KEY = {
-    "x": "\n💡 Unlock X: log into x.com in Firefox or Safari, then re-run. Or add AUTH_TOKEN/CT0 or XAI_API_KEY.\n",
+    "x": "\n💡 Unlock X: log into x.com in Firefox or Safari, then re-run. Or add AUTH_TOKEN/CT0, XAI_API_KEY, or HERMES_TWEET_API_KEY.\n",
     "web": "\n💡 You can unlock native grounded web search with SERPER_API_KEY or EXA_API_KEY.\n",
 }
 
@@ -139,7 +139,7 @@ BIRD_AUTH_HELP = f"""
 
 To fix this:
 1. Add AUTH_TOKEN and CT0 to ~/.config/pulse/.env or .claude/pulse.env
-2. Or set XAI_API_KEY for the xAI fallback backend
+2. Or set XAI_API_KEY or HERMES_TWEET_API_KEY for an alternate backend
 """
 
 BIRD_AUTH_HELP_PLAIN = """
@@ -147,7 +147,7 @@ Bird authentication failed.
 
 To fix this:
 1. Add AUTH_TOKEN and CT0 to ~/.config/pulse/.env or .claude/pulse.env
-2. Or set XAI_API_KEY for the xAI fallback backend
+2. Or set XAI_API_KEY or HERMES_TWEET_API_KEY for an alternate backend
 """
 
 # Spinner frames
@@ -377,10 +377,15 @@ def show_diagnostic_banner(diag: dict):
     # X (primary)
     if has_x:
         username = diag.get("bird_username", "")
-        label = f"Bird ({username})" if x_backend == "bird" and username else str(x_backend or "xai").upper()
+        if x_backend == "bird" and username:
+            label = f"Bird ({username})"
+        elif x_backend == "hermes_tweet":
+            label = "Hermes Tweet"
+        else:
+            label = str(x_backend or "xai").upper()
         lines.append(_row(Colors.GREEN, "✅", "X/Twitter", label))
     else:
-        lines.append(_row(Colors.RED, "❌", "X/Twitter", "Add AUTH_TOKEN + CT0 (X cookies) or XAI_API_KEY"))
+        lines.append(_row(Colors.RED, "❌", "X/Twitter", "Add AUTH_TOKEN + CT0, XAI_API_KEY, or HERMES_TWEET_API_KEY"))
 
     # Web (secondary)
     if has_web:
