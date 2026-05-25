@@ -14,6 +14,10 @@ metadata:
         - CT0
       optionalEnv:
         - XAI_API_KEY
+        - HERMES_TWEET_API_KEY
+        - XQUIK_API_KEY
+        - XQUIK_BASE_URL
+        - LAST30DAYS_X_BACKEND
         - EXA_API_KEY
         - BRAVE_API_KEY
         - SERPER_API_KEY
@@ -91,7 +95,7 @@ installable things builders share.
 
 Source unlock:
 - Zero config: HN, GitHub (if gh CLI installed), Web (if Exa/Brave/Serper key set)
-- + X (primary source): AUTH_TOKEN + CT0 from x.com cookies, or XAI_API_KEY
+- + X (primary source): AUTH_TOKEN + CT0 from x.com cookies, XAI_API_KEY, or HERMES_TWEET_API_KEY with `LAST30DAYS_X_BACKEND=hermes_tweet`
 - + Better web search: EXA_API_KEY / BRAVE_API_KEY / SERPER_API_KEY
 - + Deep scraping: FIRECRAWL_API_KEY (for release notes, README deep dives)
 ```
@@ -278,7 +282,7 @@ Only search again if the user asks about a completely different topic.
 
 ## Security & Permissions
 
-- Reads X/Twitter via AUTH_TOKEN/CT0 cookies or XAI_API_KEY
+- Reads X/Twitter via AUTH_TOKEN/CT0 cookies, XAI_API_KEY, or Hermes Tweet with HERMES_TWEET_API_KEY
 - Reads HN via Algolia API (free, no auth)
 - Reads GitHub via public API or gh CLI
 - Reads web via Exa/Brave/Serper key

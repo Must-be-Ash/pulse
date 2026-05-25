@@ -248,6 +248,9 @@ def get_config() -> dict[str, Any]:
         ('LAST30DAYS_RERANK_MODEL', None),
         ('LAST30DAYS_X_MODEL', None),
         ('LAST30DAYS_X_BACKEND', None),
+        ('HERMES_TWEET_API_KEY', None),
+        ('XQUIK_API_KEY', None),
+        ('XQUIK_BASE_URL', None),
         ('OPENAI_MODEL_PIN', None),
         ('XAI_MODEL_PIN', None),
         # X / Twitter auth
@@ -347,8 +350,17 @@ def extract_browser_credentials(config: dict[str, Any]) -> dict[str, str]:
 
 def get_x_source_with_method(config: dict[str, Any]) -> tuple[str | None, str]:
     """Return (source, method) for X search, where method describes the auth origin."""
+    from . import hermes_tweet_x
+
+    preferred = (config.get("LAST30DAYS_X_BACKEND") or "").lower()
+    if preferred == "hermes_tweet":
+        if hermes_tweet_x.is_available(config):
+            return "hermes_tweet", "hermes_tweet"
+        return None, "hermes_tweet"
     if config.get("XAI_API_KEY"):
         return "xai", "xai"
+    if hermes_tweet_x.is_available(config):
+        return "hermes_tweet", "hermes_tweet"
     if config.get("AUTH_TOKEN") and config.get("CT0"):
         method = config.get("_AUTH_TOKEN_SOURCE", "env")
         return "bird", method
@@ -372,7 +384,7 @@ def is_reddit_available(config: dict[str, Any]) -> bool:
 def get_x_source(config: dict[str, Any]) -> str | None:
     """Determine the best available explicit X/Twitter source.
 
-    Priority: explicit backend pin, then xAI, then Bird with explicit cookies.
+    Priority: explicit backend pin, then xAI, Hermes Tweet, then Bird with explicit cookies.
 
     Browser-cookie probing is intentionally not used here. Automatic Keychain
     access causes popups during normal pipeline runs. Bird is only considered
@@ -384,10 +396,11 @@ def get_x_source(config: dict[str, Any]) -> str | None:
     Returns:
         'bird' if Bird is installed and explicit cookies are configured,
         'xai' if XAI_API_KEY is configured,
+        'hermes_tweet' if HERMES_TWEET_API_KEY or XQUIK_API_KEY is configured and hermes-tweet is installed,
         None if no X source available.
     """
     # Import here to avoid circular dependency
-    from . import bird_x
+    from . import bird_x, hermes_tweet_x
 
     preferred = (config.get('LAST30DAYS_X_BACKEND') or '').lower()
     has_bird_creds = bool(config.get('AUTH_TOKEN') and config.get('CT0'))
@@ -396,11 +409,15 @@ def get_x_source(config: dict[str, Any]) -> str | None:
 
     if preferred == 'xai':
         return 'xai' if config.get('XAI_API_KEY') else None
+    if preferred == 'hermes_tweet':
+        return 'hermes_tweet' if hermes_tweet_x.is_available(config) else None
     if preferred == 'bird':
         return 'bird' if has_bird_creds and bird_x.is_bird_installed() else None
 
     if config.get('XAI_API_KEY'):
         return 'xai'
+    if hermes_tweet_x.is_available(config):
+        return 'hermes_tweet'
     if has_bird_creds and bird_x.is_bird_installed():
         return 'bird'
 
@@ -457,20 +474,16 @@ def get_x_source_status(config: dict[str, Any]) -> dict[str, Any]:
 
     Returns:
         Dict with keys: source, bird_installed, bird_authenticated,
-        bird_username, xai_available, can_install_bird
+        bird_username, xai_available, hermes_tweet_available, can_install_bird
     """
-    from . import bird_x
+    from . import bird_x, hermes_tweet_x
 
     bird_status = bird_x.get_bird_status()
     xai_available = bool(config.get('XAI_API_KEY'))
+    hermes_tweet_available = hermes_tweet_x.is_available(config)
 
     # Determine active source
-    if bird_status["authenticated"]:
-        source = 'bird'
-    elif xai_available:
-        source = 'xai'
-    else:
-        source = None
+    source = get_x_source(config)
 
     return {
         "source": source,
@@ -478,7 +491,6 @@ def get_x_source_status(config: dict[str, Any]) -> dict[str, Any]:
         "bird_authenticated": bird_status["authenticated"],
         "bird_username": bird_status["username"],
         "xai_available": xai_available,
+        "hermes_tweet_available": hermes_tweet_available,
         "can_install_bird": bird_status["can_install"],
     }
-
-

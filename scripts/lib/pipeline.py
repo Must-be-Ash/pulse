@@ -20,6 +20,7 @@ from . import (
     github,
     grounding,
     hackernews,
+    hermes_tweet_x,
     normalize,
     planner,
     providers,
@@ -110,6 +111,7 @@ def diagnose(config: dict[str, Any], requested_sources: list[str] | None = None)
         "bird_installed": x_status["bird_installed"],
         "bird_authenticated": x_status["bird_authenticated"],
         "bird_username": x_status["bird_username"],
+        "hermes_tweet_available": x_status["hermes_tweet_available"],
         "native_web_backend": native_web_backend,
         "has_scrapecreators": bool(config.get("SCRAPECREATORS_API_KEY")),
         "has_github": bool(config.get("GITHUB_TOKEN") or which("gh")),
@@ -836,6 +838,15 @@ def _retrieve_stream(
                 depth=depth,
             )
             return xai_x.parse_x_response(result), {}
+        if backend == "hermes_tweet":
+            result = hermes_tweet_x.search_x(
+                config,
+                subquery.search_query,
+                from_date,
+                to_date,
+                depth=depth,
+            )
+            return hermes_tweet_x.parse_search_response(result, query=subquery.search_query), {}
         raise RuntimeError("No X backend is available.")
     if source == "github":
         result = github.search_github(subquery.search_query, from_date, to_date, depth=depth, token=config.get("GITHUB_TOKEN"))

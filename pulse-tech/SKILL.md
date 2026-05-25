@@ -14,6 +14,10 @@ metadata:
         - CT0
       optionalEnv:
         - XAI_API_KEY
+        - HERMES_TWEET_API_KEY
+        - XQUIK_API_KEY
+        - XQUIK_BASE_URL
+        - LAST30DAYS_X_BACKEND
         - EXA_API_KEY
         - BRAVE_API_KEY
         - SERPER_API_KEY
@@ -77,6 +81,8 @@ done
 ## Step 0: Setup
 
 Check `~/.config/pulse/.env` for `SETUP_COMPLETE=true`. Run setup wizard if missing. Skip silently if done.
+
+Optional X backend: users with Hermes Tweet can install `hermes-tweet`, set `HERMES_TWEET_API_KEY`, and set `LAST30DAYS_X_BACKEND=hermes_tweet`. `XQUIK_API_KEY` remains supported as a compatibility alias.
 
 ---
 

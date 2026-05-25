@@ -346,7 +346,7 @@ def resolve_runtime(config: dict[str, Any], depth: str) -> tuple[schema.Provider
 
 def _resolve_x_backend(config: dict[str, Any]) -> str | None:
     preferred = (config.get("LAST30DAYS_X_BACKEND") or "").lower()
-    if preferred in {"xai", "bird"}:
+    if preferred in {"xai", "bird", "hermes_tweet"}:
         return preferred
     return env.get_x_source(config)
 

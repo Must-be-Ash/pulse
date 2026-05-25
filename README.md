@@ -44,6 +44,10 @@ cat > ~/.config/pulse/.env << 'EOF'
 # AUTH_TOKEN=                 # From x.com cookies (F12 → Application → Cookies)
 # CT0=                        # (required with AUTH_TOKEN)
 # XAI_API_KEY=               # Alternative: api.x.ai key
+# HERMES_TWEET_API_KEY=      # Optional: Hermes Tweet key
+# XQUIK_API_KEY=             # Optional: compatibility alias
+# LAST30DAYS_X_BACKEND=hermes_tweet  # Optional: force Hermes Tweet for X
+# XQUIK_BASE_URL=            # Optional: override https://xquik.com
 
 # Web search (recommended — secondary source):
 # EXA_API_KEY=                # 1K free/month at exa.ai
@@ -59,6 +63,8 @@ EOF
 ```
 
 If you already have `~/.config/last30days-crypto/.env` with these keys, pulse reads the same keys — just add `SETUP_COMPLETE=true` to that file and pulse will pick them up automatically.
+
+To use Hermes Tweet for X search instead of cookies or xAI, install the optional package (`pip install hermes-tweet`), set `HERMES_TWEET_API_KEY`, and set `LAST30DAYS_X_BACKEND=hermes_tweet`. `XQUIK_API_KEY` remains supported as a compatibility alias.
 
 ### 3. Use
 
