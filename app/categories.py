@@ -16,6 +16,8 @@ class Category:
     query_plan: dict
     depth: str = "deep"
     subreddits: list[str] = field(default_factory=list)
+    x_list_ids: list[str] = field(default_factory=list)
+    fetch_home_timeline: bool = False
 
 
 CATEGORIES: list[Category] = [
@@ -143,6 +145,12 @@ CATEGORIES: list[Category] = [
         topic="developer tools AI agent building startup trend adoption",
         lookback_days=3,
         depth="exhaustive",
+        x_list_ids=[
+            "1953536336675365173",
+            "1539497752140206080",
+            "2058775422171803800",
+        ],
+        fetch_home_timeline=True,
         query_plan={
             "intent": "breaking_news",
             "freshness_mode": "strict_recent",

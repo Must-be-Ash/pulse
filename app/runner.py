@@ -15,7 +15,7 @@ _SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from lib import env, pipeline, render, schema
+from lib import bird_x, env, normalize, pipeline, render, schema, signals, snippet, dedupe
 
 from . import categories as cat_mod
 from . import reporter
@@ -112,6 +112,53 @@ class _StderrCapture:
         return getattr(self._real, name)
 
 
+def _fetch_timeline_sources(
+    report: schema.Report,
+    category: cat_mod.Category,
+    config: dict,
+) -> None:
+    """Fetch tweets from X lists and home timeline, merge into the report."""
+    from lib import dates
+
+    from_date, to_date = dates.get_date_range(category.lookback_days)
+    extra_items: list[dict] = []
+
+    # Fetch from each configured X list
+    for list_id in category.x_list_ids:
+        items = bird_x.fetch_list_timeline(list_id, pages=5, delay_ms=1500)
+        if items:
+            sys.stderr.write(f"[Bird] List {list_id}: {len(items)} tweets\n")
+            extra_items.extend(items)
+
+    # Fetch home timeline
+    if category.fetch_home_timeline:
+        items = bird_x.fetch_home_timeline(pages=3, delay_ms=2000)
+        if items:
+            sys.stderr.write(f"[Bird] Home timeline: {len(items)} tweets\n")
+            extra_items.extend(items)
+
+    if not extra_items:
+        return
+
+    # Normalize and merge into the report's x source items
+    normalized = normalize.normalize_source_items(
+        "x", extra_items, from_date, to_date,
+        freshness_mode=report.query_plan.freshness_mode,
+    )
+    normalized = signals.annotate_stream(normalized, category.topic, report.query_plan.freshness_mode)
+    normalized = dedupe.dedupe_items(normalized)
+    for item in normalized:
+        item.snippet = snippet.extract_best_snippet(item, category.topic)
+
+    # Merge with existing x items, dedup again
+    existing_x = report.items_by_source.get("x", [])
+    combined = existing_x + normalized
+    report.items_by_source["x"] = dedupe.dedupe_items(combined)
+
+    total_new = len(report.items_by_source["x"]) - len(existing_x)
+    sys.stderr.write(f"[Bird] Timeline/list sources added {total_new} new unique tweets\n")
+
+
 def _run_pipeline(
     run_state: RunState,
     on_complete: Callable[[RunState], None] | None = None,
@@ -138,6 +185,9 @@ def _run_pipeline(
             lookback_days=category.lookback_days,
             subreddits=category.subreddits or None,
         )
+
+        # Fetch additional X sources: lists and home timeline
+        _fetch_timeline_sources(report, category, config)
 
         # Save full raw markdown (all clusters, all items — for debugging/reference)
         raw_md = render.render_full(report)

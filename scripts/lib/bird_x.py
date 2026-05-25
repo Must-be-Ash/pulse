@@ -469,3 +469,162 @@ def parse_bird_response(response: Dict[str, Any], query: str = "") -> List[Dict[
         items.append(item)
 
     return items
+
+
+# ---------------------------------------------------------------------------
+# Timeline / List fetching (bird-timeline.mjs)
+# ---------------------------------------------------------------------------
+
+_BIRD_TIMELINE_MJS = Path(__file__).parent / "vendor" / "bird-search" / "bird-timeline.mjs"
+
+
+def fetch_list_timeline(
+    list_id: str,
+    pages: int = 5,
+    delay_ms: int = 1500,
+) -> List[Dict[str, Any]]:
+    """Fetch tweets from a Twitter List.
+
+    Args:
+        list_id: Twitter List ID (numeric string)
+        pages: Number of pages to fetch (each ~20 tweets)
+        delay_ms: Delay between pages in ms (rate limit protection)
+
+    Returns:
+        List of normalized item dicts (same format as parse_bird_response).
+    """
+    if not _BIRD_TIMELINE_MJS.exists():
+        _log("bird-timeline.mjs not found")
+        return []
+    if not shutil.which("node"):
+        _log("Node.js not found")
+        return []
+
+    cmd = [
+        "node", str(_BIRD_TIMELINE_MJS),
+        "--list", str(list_id),
+        "--pages", str(pages),
+        "--delay", str(delay_ms),
+        "--json",
+    ]
+
+    _log(f"Fetching list {list_id} ({pages} pages)")
+
+    preexec = os.setsid if hasattr(os, 'setsid') else None
+    timeout = max(60, pages * 15)
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            preexec_fn=preexec,
+            env=_subprocess_env(),
+        )
+        stdout, stderr = proc.communicate(timeout=timeout)
+
+        if stderr:
+            for line in stderr.strip().split('\n'):
+                if line.strip():
+                    _log(line.strip().removeprefix('[bird-timeline] '))
+
+        if proc.returncode != 0:
+            _log(f"List fetch failed: {(stderr or '').strip()[:200]}")
+            return []
+
+        output = (stdout or "").strip()
+        if not output:
+            return []
+
+        response = json.loads(output)
+        return parse_bird_response(response, query="")
+
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (ProcessLookupError, PermissionError, OSError):
+            proc.kill()
+        _log(f"List fetch timed out for {list_id}")
+        return []
+    except json.JSONDecodeError:
+        _log(f"Invalid JSON from list fetch for {list_id}")
+        return []
+    except Exception as e:
+        _log(f"List fetch error: {e}")
+        return []
+
+
+def fetch_home_timeline(
+    pages: int = 3,
+    delay_ms: int = 2000,
+) -> List[Dict[str, Any]]:
+    """Fetch tweets from the authenticated user's Home (For You) timeline.
+
+    Args:
+        pages: Number of pages to fetch (each ~20 tweets)
+        delay_ms: Delay between pages in ms (rate limit protection)
+
+    Returns:
+        List of normalized item dicts (same format as parse_bird_response).
+    """
+    if not _BIRD_TIMELINE_MJS.exists():
+        _log("bird-timeline.mjs not found")
+        return []
+    if not shutil.which("node"):
+        _log("Node.js not found")
+        return []
+
+    cmd = [
+        "node", str(_BIRD_TIMELINE_MJS),
+        "--home",
+        "--pages", str(pages),
+        "--delay", str(delay_ms),
+        "--json",
+    ]
+
+    _log(f"Fetching home timeline ({pages} pages)")
+
+    preexec = os.setsid if hasattr(os, 'setsid') else None
+    timeout = max(60, pages * 15)
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            preexec_fn=preexec,
+            env=_subprocess_env(),
+        )
+        stdout, stderr = proc.communicate(timeout=timeout)
+
+        if stderr:
+            for line in stderr.strip().split('\n'):
+                if line.strip():
+                    _log(line.strip().removeprefix('[bird-timeline] '))
+
+        if proc.returncode != 0:
+            _log(f"Home timeline fetch failed: {(stderr or '').strip()[:200]}")
+            return []
+
+        output = (stdout or "").strip()
+        if not output:
+            return []
+
+        response = json.loads(output)
+        return parse_bird_response(response, query="")
+
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (ProcessLookupError, PermissionError, OSError):
+            proc.kill()
+        _log("Home timeline fetch timed out")
+        return []
+    except json.JSONDecodeError:
+        _log("Invalid JSON from home timeline fetch")
+        return []
+    except Exception as e:
+        _log(f"Home timeline fetch error: {e}")
+        return []
