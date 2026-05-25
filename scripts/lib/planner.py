@@ -526,10 +526,10 @@ def _should_force_deterministic_plan(topic: str) -> bool:
 
 def _max_subqueries(intent: str) -> int:
     if intent == "comparison":
-        return 4
+        return 6
     if intent in {"factual", "concept"}:
-        return 2
-    return 3
+        return 3
+    return 20
 
 
 def _default_sources_for_intent(intent: str, available_sources: list[str]) -> list[str]:

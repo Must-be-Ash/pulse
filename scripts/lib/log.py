@@ -13,14 +13,14 @@ def debug(msg: str) -> None:
         sys.stderr.flush()
 
 
-def source_log(prefix: str, msg: str, *, tty_only: bool = True) -> None:
+def source_log(prefix: str, msg: str, *, tty_only: bool = False) -> None:
     """Log a source module message to stderr.
 
     Args:
         prefix: Source label (e.g. "Reddit", "Bird").
         msg: Message text.
-        tty_only: If True, only log when stderr is a TTY (avoids cluttering
-                  non-interactive output like Claude Code).
+        tty_only: If True, only log when stderr is a TTY. Default False
+                  so logs are always visible (including LaunchAgent runs).
     """
     if tty_only and not sys.stderr.isatty():
         return

@@ -8,11 +8,17 @@ dependencies = [
   "requests>=2.32,<3",
 ]
 
+[project.optional-dependencies]
+app = ["rumps>=0.4.0"]
+
 [dependency-groups]
 dev = [
   "pytest>=9,<10",
   "pytest-cov>=7,<8",
 ]
+
+[tool.setuptools.packages.find]
+include = ["app*", "scripts*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -24,3 +30,4 @@ addopts = [
 
 [project.scripts]
 pulse = "scripts.pulse:main"
+pulse-app = "app.menubar:main"

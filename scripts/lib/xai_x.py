@@ -122,6 +122,7 @@ def search_x(
         ],
     }
 
+    sys.stderr.write(f"[X/xAI] Searching for '{topic}' (since {from_date}, depth={depth})\n")
     return http.post(XAI_RESPONSES_URL, payload, headers=headers, timeout=timeout)
 
 
@@ -225,4 +226,5 @@ def parse_x_response(response: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         clean_items.append(clean_item)
 
+    sys.stderr.write(f"[X/xAI] Found {len(clean_items)} posts\n")
     return clean_items

@@ -107,14 +107,34 @@ def save_output(report: schema.Report, emit: str, save_dir: str, suffix: str = "
     return out_path
 
 
-def emit_output(report: schema.Report, emit: str, fun_level: str = "medium") -> str:
+def emit_output(report: schema.Report, emit: str, fun_level: str = "medium", save_path: str | None = None) -> str:
     if emit == "json":
         return json.dumps(schema.to_dict(report), indent=2, sort_keys=True)
     if emit in {"compact", "md"}:
-        return render.render_compact(report, fun_level=fun_level)
+        return render.render_compact(report, fun_level=fun_level, save_path=save_path)
     if emit == "context":
         return render.render_context(report)
     raise SystemExit(f"Unsupported emit mode: {emit}")
+
+
+def compute_save_path_display(save_dir: str, topic: str, suffix: str, emit: str) -> str:
+    """Compute the user-friendly save path string that will be shown in the footer.
+
+    Uses ~ when the saved file is under the user's home directory; otherwise
+    returns the absolute path.
+    """
+    from pathlib import Path as _Path
+    path = _Path(save_dir).expanduser().resolve()
+    slug = slugify(topic)
+    extension = "json" if emit == "json" else "md"
+    suffix_part = f"-{suffix}" if suffix else ""
+    raw = path / f"{slug}-raw{suffix_part}.{extension}"
+    try:
+        home = _Path.home().resolve()
+        relative = raw.relative_to(home)
+        return f"~/{relative}"
+    except ValueError:
+        return str(raw)
 
 
 def persist_report(report: schema.Report) -> dict[str, int]:
@@ -161,7 +181,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--save-suffix", help="Suffix for saved output filename (e.g., 'gemini' → kanye-west-raw-gemini.md)")
     parser.add_argument("--scrape", action="append", default=None,
                         help="Firecrawl-scrape the given URL (repeatable). Counts against the per-run scrape budget.")
-    parser.add_argument("--lookback-days", type=int, default=30, help="Number of days to look back for research (default: 30, watchlist uses 90)")
+    parser.add_argument(
+        "--days",
+        "--lookback-days",
+        dest="lookback_days",
+        type=int,
+        default=30,
+        help="Number of days to look back for research (default: 30, watchlist uses 90)",
+    )
     parser.add_argument("--auto-resolve", action="store_true",
                         help="Use web search to discover subreddits + X handles + GitHub repos before planning (for platforms without WebSearch)")
     parser.add_argument("--github-user", help="GitHub username for person-mode search (e.g., steipete)")
@@ -187,16 +214,11 @@ def _missing_sources_for_promo(diag: dict[str, object]) -> str | None:
 
 def _show_runtime_ui(report: schema.Report, progress: ui.ProgressDisplay, diag: dict[str, object]) -> None:
     counts = {source: len(items) for source, items in report.items_by_source.items()}
-    # Crypto enrichment runs out-of-band so its bundles aren't in items_by_source.
-    # Surface them in the completion summary by counting per-source bundles.
-    for source, bundles in (report.crypto_enrichment or {}).items():
-        counts[source] = len([b for b in bundles if not b.get("error")])
     display_sources = list(
         dict.fromkeys(
             [
                 *report.query_plan.source_weights.keys(),
                 *report.items_by_source.keys(),
-                *(report.crypto_enrichment or {}).keys(),
                 *report.errors_by_source.keys(),
             ]
         )
@@ -350,7 +372,7 @@ def main() -> int:
     if args.store:
         counts = persist_report(report)
         sys.stderr.write(
-            f"[last30days-crypto] Stored {counts['new']} new, {counts['updated']} updated findings\n"
+            f"[pulse] Stored {counts['new']} new, {counts['updated']} updated findings\n"
         )
         sys.stderr.flush()
 
@@ -365,10 +387,27 @@ def main() -> int:
         pass
 
     fun_level = config.get("FUN_LEVEL", "medium").lower()
-    rendered = emit_output(report, args.emit, fun_level=fun_level)
+    footer_save_path = None
+    if args.save_dir:
+        footer_save_path = compute_save_path_display(
+            args.save_dir, report.topic, args.save_suffix or "", args.emit
+        )
+
+    # Signal to render_compact whether pre-research flags were supplied.
+    # Used to emit a Pre-Research Status warning when the model skipped
+    # Step 0.5 / 0.55 and invoked the engine bare on an eligible topic.
+    pre_research_flags_present = bool(
+        args.x_handle
+        or args.github_user
+        or args.plan
+        or args.auto_resolve
+    )
+    report.artifacts["pre_research_flags_present"] = pre_research_flags_present
+
+    rendered = emit_output(report, args.emit, fun_level=fun_level, save_path=footer_save_path)
     if args.save_dir:
         save_path = save_output(report, args.emit, args.save_dir, suffix=args.save_suffix or "")
-        sys.stderr.write(f"[last30days-crypto] Saved output to {save_path}\n")
+        sys.stderr.write(f"[pulse] Saved output to {save_path}\n")
         sys.stderr.flush()
     print(rendered)
     return 0

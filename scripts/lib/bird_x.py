@@ -35,6 +35,7 @@ DEPTH_CONFIG = {
     "quick": 12,
     "default": 30,
     "deep": 60,
+    "exhaustive": 80,
 }
 
 # Module-level credentials injected from .env config

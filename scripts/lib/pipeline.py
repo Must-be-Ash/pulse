@@ -19,10 +19,12 @@ from . import (
     firecrawl,
     github,
     grounding,
+    hackernews,
     normalize,
     planner,
     providers,
     query,
+    reddit,
     reddit_public,
     rerank,
     schema,
@@ -37,13 +39,15 @@ DEPTH_SETTINGS = {
     "quick": {"per_stream_limit": 6, "pool_limit": 15, "rerank_limit": 12},
     "default": {"per_stream_limit": 12, "pool_limit": 40, "rerank_limit": 40},
     "deep": {"per_stream_limit": 20, "pool_limit": 60, "rerank_limit": 60},
+    "exhaustive": {"per_stream_limit": 40, "pool_limit": 120, "rerank_limit": 100},
 }
 
 SEARCH_ALIAS = {
+    "hn": "hackernews",
     "web": "grounding",
 }
 
-MAX_SOURCE_FETCHES: dict[str, int] = {"x": 2}
+MAX_SOURCE_FETCHES: dict[str, int] = {}
 
 MOCK_AVAILABLE_SOURCES = [
     "x",
@@ -67,14 +71,13 @@ def normalize_requested_sources(sources: list[str] | None) -> list[str] | None:
 
 def available_sources(config: dict[str, Any], requested_sources: list[str] | None = None) -> list[str]:
     available: list[str] = []
-    # X is the primary social source for crypto research.
     if env.get_x_source(config):
         available.append("x")
+    # reddit_public needs no API key — always available
+    available.append("reddit")
+    available.append("hackernews")
     if config.get("BRAVE_API_KEY") or config.get("EXA_API_KEY") or config.get("SERPER_API_KEY") or config.get("PARALLEL_API_KEY"):
         available.append("grounding")
-    # Reddit public JSON works without any API key — always available as a
-    # tertiary qualitative source for crypto community discussion.
-    available.append("reddit")
     if config.get("GITHUB_TOKEN") or which("gh"):
         available.append("github")
     return available
@@ -150,15 +153,13 @@ def run(
     if not available:
         raise RuntimeError("No sources are available for this run.")
 
-    # Crypto token extraction: surfaces tokens for enrichment dispatch in
-    # Phase 5.1 and is attached to the QueryPlan via the planner.
     if external_plan:
         # External plan provided (e.g., from Claude Code via --plan flag).
         # Parse it through the same sanitizer to validate structure.
         plan = planner._sanitize_plan(
             external_plan, topic, available, requested_sources, depth,
         )
-        print(f"[Planner] Using external plan ({len(plan.subqueries)} subqueries)", file=sys.stderr)
+        plan_source = "external"
     else:
         plan = planner.plan_query(
             topic=topic,
@@ -168,8 +169,15 @@ def run(
             provider=None if mock else reasoning_provider,
             model=None if mock else runtime.planner_model,
             context=config.get("_auto_resolve_context", ""),
-            tokens=[],
         )
+        # Source labelling: the fallback path annotates notes with "fallback-plan"
+        # or "deterministic-comparison-plan"; anything else came from the LLM.
+        if any("fallback" in note or "deterministic" in note for note in (plan.notes or [])):
+            plan_source = "deterministic"
+        elif not mock and reasoning_provider and runtime.planner_model:
+            plan_source = "llm"
+        else:
+            plan_source = "deterministic"
 
     # Safety net: ensure grounding appears in all subqueries even if the planner
     # omits it. This is redundant when the planner includes grounding via
@@ -179,7 +187,30 @@ def run(
             if "grounding" not in sq.sources:
                 sq.sources.append("grounding")
 
+    # Always-on planner trace. Emits one summary line plus one per subquery
+    # so retrieval-breadth failures are visible without --debug.
+    print(
+        f"[Planner] Plan: intent={plan.intent}, freshness={plan.freshness_mode}, "
+        f"cluster_mode={plan.cluster_mode}, subqueries={len(plan.subqueries)}, "
+        f"source={plan_source}",
+        file=sys.stderr,
+    )
+    if plan.subqueries:
+        for index, sq in enumerate(plan.subqueries, start=1):
+            sources_str = ",".join(sq.sources) if sq.sources else "(none)"
+            print(
+                f"[Planner]   sq{index} label={sq.label} "
+                f'search="{sq.search_query}" sources=[{sources_str}]',
+                file=sys.stderr,
+            )
+    else:
+        print("[Planner]   (no subqueries in plan)", file=sys.stderr)
+
     bundle = schema.RetrievalBundle(artifacts={"grounding": []})
+    # Expose plan_source to the renderer so render_compact can emit the
+    # DEGRADED RUN banner when a named-entity topic was invoked bare
+    # (source=deterministic AND no pre-research flags).
+    bundle.artifacts["plan_source"] = plan_source
 
     # Project-mode or person-mode GitHub: run once before the main subquery loop
     _github_custom_done = False
@@ -356,7 +387,7 @@ def run(
         if bundle.items_by_source.get(source):
             del bundle.errors_by_source[source]
 
-    items_by_source = _finalize_items_by_source(bundle.items_by_source)
+    items_by_source = _finalize_items_by_source(bundle.items_by_source, topic=topic)
     candidates = weighted_rrf(bundle.items_by_source_and_query, plan, pool_limit=settings["pool_limit"])
     ranked_candidates = rerank.rerank_candidates(
         topic=topic,
@@ -397,8 +428,6 @@ def run(
         errors_by_source=bundle.errors_by_source,
         warnings=warnings,
         artifacts=bundle.artifacts,
-        crypto_enrichment={},
-        tokens=[],
     )
 
 
@@ -425,7 +454,10 @@ def _normalize_score_dedupe(
     return normalized
 
 
-def _finalize_items_by_source(items_by_source_raw: dict[str, list[schema.SourceItem]]) -> dict[str, list[schema.SourceItem]]:
+def _finalize_items_by_source(
+    items_by_source_raw: dict[str, list[schema.SourceItem]],
+    topic: str = "",
+) -> dict[str, list[schema.SourceItem]]:
     finalized = {}
     for source, items in items_by_source_raw.items():
         items = sorted(items, key=lambda item: item.local_rank_score or 0.0, reverse=True)
@@ -748,21 +780,46 @@ def _retrieve_stream(
         return grounding.web_search(
             subquery.search_query, date_range, config, backend=web_backend)
     if source == "reddit":
-        # Public JSON only — no API key required. Uses raw_topic so
-        # expand_reddit_queries() generates diverse variants from the
-        # original user topic, not the planner's narrowed search_query.
+        # Use raw_topic so expand_reddit_queries() generates diverse variants
+        # from the original user topic, not the planner's narrowed search_query.
         reddit_query = raw_topic or subquery.search_query
+        # Public Reddit first (free, gets comments); SC as backup
         try:
-            results = reddit_public.search_reddit_public(
+            public_results = reddit_public.search_reddit_public(
                 reddit_query, from_date, to_date, depth=depth,
                 subreddits=subreddits,
             )
-            return results, {}
+            if public_results:
+                return public_results, {}
         except Exception as exc:
             sys.stderr.write(
-                f"[Reddit] Public search failed ({type(exc).__name__}: {exc})\n"
+                f"[Reddit] Public search failed ({type(exc).__name__}: {exc})"
             )
-            return [], {}
+            if not config.get("SCRAPECREATORS_API_KEY"):
+                sys.stderr.write("\n")
+                return [], {}
+            sys.stderr.write(", using ScrapeCreators backup\n")
+        # Fallback to ScrapeCreators if public returned empty or raised
+        if config.get("SCRAPECREATORS_API_KEY"):
+            try:
+                result = reddit.search_and_enrich(
+                    reddit_query,
+                    from_date,
+                    to_date,
+                    depth=depth,
+                    token=config.get("SCRAPECREATORS_API_KEY"),
+                    subreddits=subreddits,
+                )
+                return reddit.parse_reddit_response(result), {}
+            except Exception as exc:
+                sys.stderr.write(
+                    f"[Reddit] ScrapeCreators backup also failed "
+                    f"({type(exc).__name__}: {exc})\n"
+                )
+        return [], {}
+    if source == "hackernews":
+        result = hackernews.search_hackernews(subquery.search_query, from_date, to_date, depth=depth)
+        return hackernews.parse_hackernews_response(result, query=subquery.search_query), {}
     if source == "x":
         backend = runtime.x_search_backend or env.get_x_source(config)
         if backend == "bird":
@@ -798,8 +855,8 @@ def _mock_stream_results(source: str, subquery: schema.SubQuery) -> tuple[list[d
             {
                 "id": "R1",
                 "title": f"{subquery.search_query} discussion thread",
-                "url": "https://reddit.com/r/CryptoCurrency/comments/1",
-                "subreddit": "CryptoCurrency",
+                "url": "https://reddit.com/r/example/comments/1",
+                "subreddit": "example",
                 "date": dates.get_date_range(5)[0],
                 "engagement": {"score": 120, "num_comments": 48, "upvote_ratio": 0.91},
                 "selftext": f"Community discussion about {subquery.search_query}.",
