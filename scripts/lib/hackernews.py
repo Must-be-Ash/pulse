@@ -126,19 +126,24 @@ def _title_matches_query(title: str, query: str, author: str = "") -> bool:
     """
     if not query:
         return True
+    # If the query IS an HN prefix (e.g. "Show HN"), skip the filter —
+    # the Algolia search already matched on the prefix.
+    query_clean = query.strip().lower()
+    if query_clean in ("show hn", "ask hn", "tell hn", "launch hn"):
+        return True
     stripped = _HN_PREFIXES.sub("", title).strip()
     # Also check that the match isn't solely in the author's username
     check_text = stripped.lower()
     query_lower = query.lower()
-    # Check each word of the query independently; all must appear somewhere
-    # in the stripped title (not just the prefix).
+    # Check that at least one query word appears in the stripped title.
+    # Previous behavior required ALL words which was too aggressive —
+    # "AI agent" would reject "Show HN: My agent framework" because "AI"
+    # wasn't in the title.
     query_words = query_lower.split()
     for word in query_words:
-        if word in check_text:
-            continue
-        # Word not found in stripped title — reject
-        return False
-    return True
+        if len(word) >= 2 and word in check_text:
+            return True
+    return False
 
 
 def parse_hackernews_response(response: Dict[str, Any], query: str = "") -> List[Dict[str, Any]]:

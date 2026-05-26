@@ -56,14 +56,14 @@ def _restore_from_disk() -> None:
             continue
 
         latest_html = html_files[0]
-        # Try to find matching audio file (same timestamp)
-        stem = latest_html.stem  # e.g. "cli-tools-20260524-183200"
+        # Find the closest audio file for this category
+        # HTML and audio may have slightly different timestamps (generated seconds apart)
         audio_path = None
-        for ext in (".aiff", ".mp3"):
-            candidate = latest_html.with_suffix(ext)
-            if candidate.exists():
-                audio_path = str(candidate)
-                break
+        audio_files = sorted(output_dir.glob(f"{slug}-*.aiff"), reverse=True)
+        if not audio_files:
+            audio_files = sorted(output_dir.glob(f"{slug}-*.mp3"), reverse=True)
+        if audio_files:
+            audio_path = str(audio_files[0])
 
         _latest_runs[cat.id] = RunState(
             run_id=f"restored-{cat.id}",
@@ -207,7 +207,34 @@ def _run_trends_pipeline(run_state: RunState, config: dict) -> None:
         except Exception as exc:
             sys.stderr.write(f"[Trends] Web search failed: {exc}\n")
 
-    # Step 2b: Digg AI Top Stories (curated high-signal AI news)
+    # Step 2b: HackerNews — builder conversations and front-page narratives
+    from lib import hackernews
+    hn_queries = ["AI", "LLM", "Claude Code", "agent", "open source"]
+    hn_items: list[dict] = []
+    for query in hn_queries:
+        try:
+            resp = hackernews.search_hackernews(query, from_date, to_date, depth="deep")
+            parsed = hackernews.parse_hackernews_response(resp, query=query)
+            hn_items.extend(parsed)
+        except Exception:
+            pass
+    if hn_items:
+        # Dedupe HN items by URL
+        hn_seen: set[str] = set()
+        for item in hn_items:
+            url = item.get("hn_url") or item.get("url", "")
+            if url and url.lower() not in hn_seen:
+                hn_seen.add(url.lower())
+                web_items.append({
+                    "title": item.get("title", ""),
+                    "snippet": item.get("title", ""),
+                    "url": url,
+                    "source_domain": "news.ycombinator.com",
+                    "date": item.get("date"),
+                })
+        sys.stderr.write(f"[Trends] HackerNews: {len(hn_seen)} unique stories from {len(hn_items)} results\n")
+
+    # Step 2c: Digg AI Top Stories (curated high-signal AI news)
     try:
         from .signal_agent.digg import fetch_top_stories
         digg_stories = fetch_top_stories()

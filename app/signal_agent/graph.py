@@ -44,22 +44,27 @@ BATCH_SIZE = 75
 
 # ── Node 1: Ingest & Prepare ──────────────────────────────────────────────
 
-# Minimum likes for an item to be considered for the trends category.
-# Items below this threshold are noise — replies, low-reach tweets, RTs.
-# Only applies to the 'tech' (trends) category; other categories ingest everything.
-TRENDS_MIN_LIKES = 20
+# Engagement floor per category. Trends needs high engagement (zeitgeist).
+# Tool categories need a lighter filter (cut zero-engagement noise but keep indie devs).
+_MIN_LIKES = {
+    "tech": 20,     # Trends: engagement IS the signal
+    "repos": 5,     # Tools: cut noise but keep indie dev posts
+    "cli": 5,
+    "skills": 5,
+    "news": 0,      # News: no engagement filter (web sources don't have likes)
+}
 
 
 def node_ingest(state: GraphState, report: schema.Report) -> None:
     """Node 1: Ingest all items from pipeline output, deduplicate, compact.
 
-    For the 'tech' (trends) category, pre-filters by engagement — only items
-    with significant likes pass through, since engagement IS the signal for trends.
+    Pre-filters X items by engagement to cut noise (threshold varies by category).
     """
     t0 = time.time()
     seen_urls: set[str] = set()
     items: list[CompactItem] = []
     skipped_low_engagement = 0
+    min_likes = _MIN_LIKES.get(state.category_id, 0)
 
     for source, source_items in report.items_by_source.items():
         for item in source_items:
@@ -68,15 +73,15 @@ def node_ingest(state: GraphState, report: schema.Report) -> None:
                 continue
             seen_urls.add(key)
 
-            # For trends: pre-filter by engagement to cut noise
-            if state.category_id == "tech" and source == "x":
+            # Filter low-engagement X items
+            if source == "x" and min_likes > 0:
                 likes = 0
                 eng = item.engagement or {}
                 for k in ("likes", "likeCount", "favorite_count"):
                     v = eng.get(k)
                     if isinstance(v, (int, float)) and v > likes:
                         likes = v
-                if likes < TRENDS_MIN_LIKES:
+                if likes < min_likes:
                     skipped_low_engagement += 1
                     continue
 
@@ -487,6 +492,7 @@ def node_report(state: GraphState) -> None:
     )
 
     remaining = max(0, len(state.signals) - 8)
+    sys.stderr.write(f"[SignalAgent] Generating audio narration for {state.category_id}...\n")
     try:
         script = chat_text(
             AUDIO_SCRIPT_SYSTEM,
@@ -498,9 +504,10 @@ def node_report(state: GraphState) -> None:
                 remaining=remaining,
             ),
             tier="script",
-            timeout=30,
+            timeout=60,
         )
         state.narration_script = script
+        sys.stderr.write(f"[SignalAgent] Narration script: {len(script)} chars\n")
 
         # Generate audio file
         audio_path = reporter.generate_signal_audio(
@@ -508,9 +515,12 @@ def node_report(state: GraphState) -> None:
         )
         if audio_path:
             state.audio_path = str(audio_path)
+            sys.stderr.write(f"[SignalAgent] Audio saved: {audio_path}\n")
+        else:
+            sys.stderr.write("[SignalAgent] Audio generation returned None\n")
     except Exception as exc:
         state.errors.append(f"Audio generation failed: {exc}")
-        sys.stderr.write(f"[SignalAgent] Audio generation error: {exc}\n")
+        sys.stderr.write(f"[SignalAgent] Audio generation error: {type(exc).__name__}: {exc}\n")
 
     state.timings["report"] = time.time() - t0
     sys.stderr.write(
