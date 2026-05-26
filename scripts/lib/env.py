@@ -261,6 +261,12 @@ def get_config() -> dict[str, Any]:
         ('FIRECRAWL_API_KEY', None),
         # GitHub
         ('GITHUB_TOKEN', None),
+        # Twitter API v2
+        ('TWITTER_API_KEY', None),
+        ('TWITTER_API_SECRET', None),
+        ('TWITTER_BEARER_TOKEN', None),
+        # Claude / Anthropic
+        ('CLAUDE_API_KEY', None),
         # Misc
         ('FROM_BROWSER', None),
         ('SETUP_COMPLETE', None),

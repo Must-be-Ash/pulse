@@ -16,6 +16,9 @@ import rumps
 from . import categories as cat_mod
 from . import runner
 
+# Categories that get audio narration
+_AUDIO_CATEGORIES = {"tech", "news"}
+
 
 class PulseApp(rumps.App):
     def __init__(self):
@@ -23,8 +26,10 @@ class PulseApp(rumps.App):
         self._run_items: dict[str, rumps.MenuItem] = {}
         self._view_items: dict[str, rumps.MenuItem] = {}
         self._audio_items: dict[str, rumps.MenuItem] = {}
+        self._stop_audio_item: rumps.MenuItem | None = None
         self._category_menus: dict[str, rumps.MenuItem] = {}
-        self._notified_runs: set[str] = set()  # run_ids we've already sent notifications for
+        self._notified_runs: set[str] = set()
+        self._audio_process: subprocess.Popen | None = None
         self._build_menu()
 
         # Poll for run completion every 2 seconds
@@ -43,7 +48,6 @@ class PulseApp(rumps.App):
             self._run_items[cat.id] = run_item
 
             view_item = rumps.MenuItem("View Latest Report")
-            audio_item = rumps.MenuItem("Play Audio")
 
             # Restore from disk if a previous run exists
             existing = runner.get_latest_run(cat.id)
@@ -53,18 +57,28 @@ class PulseApp(rumps.App):
             else:
                 view_item.set_callback(None)
 
-            if existing and existing.audio_path:
-                audio_item.set_callback(self._make_audio_callback(existing.audio_path))
-                self._notified_runs.add(existing.run_id)
-            else:
-                audio_item.set_callback(None)
-
             self._view_items[cat.id] = view_item
-            self._audio_items[cat.id] = audio_item
 
             cat_menu[run_item.title] = run_item
             cat_menu[view_item.title] = view_item
-            cat_menu[audio_item.title] = audio_item
+
+            # Only Tech & AI gets audio
+            if cat.id in _AUDIO_CATEGORIES:
+                audio_item = rumps.MenuItem("Play Audio")
+                stop_item = rumps.MenuItem("Stop Audio")
+
+                if existing and existing.audio_path:
+                    audio_item.set_callback(self._make_audio_callback(existing.audio_path))
+                    self._notified_runs.add(existing.run_id)
+                else:
+                    audio_item.set_callback(None)
+
+                stop_item.set_callback(self._on_stop_audio)
+                self._audio_items[cat.id] = audio_item
+                self._stop_audio_item = stop_item
+
+                cat_menu[audio_item.title] = audio_item
+                cat_menu[stop_item.title] = stop_item
 
             category_items.append(cat_menu)
             self._category_menus[cat.id] = cat_menu
@@ -85,8 +99,24 @@ class PulseApp(rumps.App):
 
     def _make_audio_callback(self, audio_path: str):
         def callback(sender):
-            subprocess.Popen(["afplay", audio_path])
+            # Stop any currently playing audio first
+            self._kill_audio()
+            self._audio_process = subprocess.Popen(["afplay", audio_path])
         return callback
+
+    def _on_stop_audio(self, sender) -> None:
+        self._kill_audio()
+
+    def _kill_audio(self) -> None:
+        """Kill any running afplay process."""
+        if self._audio_process and self._audio_process.poll() is None:
+            self._audio_process.terminate()
+            self._audio_process = None
+        # Also kill any stray afplay processes we might have spawned
+        try:
+            subprocess.run(["pkill", "-f", "afplay.*Pulse"], capture_output=True, timeout=3)
+        except Exception:
+            pass
 
     def _start_run(self, category: cat_mod.Category) -> None:
         if runner.is_running():
@@ -148,18 +178,16 @@ class PulseApp(rumps.App):
         current = runner.get_current_run()
 
         if current and current.status == "running":
-            # Still running — update progress in menu if available
             cat_id = current.category.id
             run_item = self._run_items.get(cat_id)
             if run_item and current.progress_messages:
                 last_msg = current.progress_messages[-1]
-                # Truncate long messages for menu display
                 if len(last_msg) > 40:
                     last_msg = last_msg[:37] + "..."
                 run_item.title = f"Running: {last_msg}"
             return
 
-        # Check if any category just completed (compare with our tracking)
+        # Check if any category just completed
         for cat in cat_mod.all_categories():
             latest = runner.get_latest_run(cat.id)
             if not latest or latest.status != "completed":
@@ -169,15 +197,15 @@ class PulseApp(rumps.App):
 
             self._notified_runs.add(latest.run_id)
             view_item = self._view_items[cat.id]
-            audio_item = self._audio_items[cat.id]
 
-            # Update view report button
             if latest.report_html_path:
                 view_item.set_callback(self._make_view_callback(latest.report_html_path))
 
-            # Update play audio button
-            if latest.audio_path:
-                audio_item.set_callback(self._make_audio_callback(latest.audio_path))
+            # Update audio only for Tech & AI
+            if cat.id in _AUDIO_CATEGORIES and latest.audio_path:
+                audio_item = self._audio_items.get(cat.id)
+                if audio_item:
+                    audio_item.set_callback(self._make_audio_callback(latest.audio_path))
 
             rumps.notification(
                 "Pulse",
@@ -195,6 +223,7 @@ class PulseApp(rumps.App):
                 run_item.set_callback(self._make_run_callback(cat))
 
     def _on_quit(self, sender) -> None:
+        self._kill_audio()
         rumps.quit_application()
 
 

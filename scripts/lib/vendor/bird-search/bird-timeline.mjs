@@ -6,12 +6,13 @@
  * Usage:
  *   node bird-timeline.mjs --list <list_id> [--pages N] [--json]
  *   node bird-timeline.mjs --home [--pages N] [--json]
+ *   node bird-timeline.mjs --bookmarks [--pages N] [--json]
  */
 
 import { resolveCredentials } from './lib/cookies.js';
 import { TwitterClientBase } from './lib/twitter-client-base.js';
 import { TWITTER_API_BASE } from './lib/twitter-client-constants.js';
-import { buildHomeTimelineFeatures } from './lib/twitter-client-features.js';
+import { buildHomeTimelineFeatures, buildBookmarksFeatures } from './lib/twitter-client-features.js';
 import { parseTweetsFromInstructions, extractCursorFromInstructions } from './lib/twitter-client-utils.js';
 
 const args = process.argv.slice(2);
@@ -29,6 +30,8 @@ for (let i = 0; i < args.length; i++) {
     i++;
   } else if (args[i] === '--home') {
     mode = 'home';
+  } else if (args[i] === '--bookmarks') {
+    mode = 'bookmarks';
   } else if (args[i] === '--pages' && args[i + 1]) {
     maxPages = parseInt(args[i + 1], 10);
     i++;
@@ -68,18 +71,32 @@ try {
       await new Promise(r => setTimeout(r, pageDelayMs));
     }
 
-    let queryId, variables, instructionsPath;
+    let queryId, variables, endpoint, features_to_use;
 
     if (mode === 'list') {
       queryId = await client.getQueryId('ListLatestTweetsTimeline');
+      endpoint = 'ListLatestTweetsTimeline';
+      features_to_use = features;
       variables = {
         listId: listId,
         count: 20,
         ...(cursor ? { cursor } : {}),
       };
-      instructionsPath = 'list_by_id_timeline';
+    } else if (mode === 'bookmarks') {
+      queryId = await client.getQueryId('Bookmarks');
+      endpoint = 'Bookmarks';
+      features_to_use = buildBookmarksFeatures();
+      variables = {
+        count: 20,
+        withDownvotePerspective: false,
+        withReactionsMetadata: false,
+        withReactionsPerspective: false,
+        ...(cursor ? { cursor } : {}),
+      };
     } else {
       queryId = await client.getQueryId('HomeTimeline');
+      endpoint = 'HomeTimeline';
+      features_to_use = features;
       variables = {
         count: 20,
         includePromotedContent: false,
@@ -87,15 +104,13 @@ try {
         requestContext: 'launch',
         ...(cursor ? { cursor } : {}),
       };
-      instructionsPath = 'home_timeline_urt';
     }
 
     const params = new URLSearchParams({
       variables: JSON.stringify(variables),
-      features: JSON.stringify(features),
+      features: JSON.stringify(features_to_use),
     });
 
-    const endpoint = mode === 'list' ? 'ListLatestTweetsTimeline' : 'HomeTimeline';
     const url = `${TWITTER_API_BASE}/${queryId}/${endpoint}?${params.toString()}`;
 
     const response = await client.fetchWithTimeout(url, {
@@ -115,6 +130,8 @@ try {
     let instructions;
     if (mode === 'list') {
       instructions = data.data?.list?.tweets_timeline?.timeline?.instructions;
+    } else if (mode === 'bookmarks') {
+      instructions = data.data?.bookmark_timeline_v2?.timeline?.instructions;
     } else {
       instructions = data.data?.home?.home_timeline_urt?.instructions;
     }

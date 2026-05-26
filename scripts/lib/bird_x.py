@@ -628,3 +628,78 @@ def fetch_home_timeline(
     except Exception as e:
         _log(f"Home timeline fetch error: {e}")
         return []
+
+
+def fetch_bookmarks(
+    pages: int = 10,
+    delay_ms: int = 1500,
+) -> List[Dict[str, Any]]:
+    """Fetch the authenticated user's bookmarked tweets.
+
+    Args:
+        pages: Number of pages to fetch (each ~20 tweets)
+        delay_ms: Delay between pages in ms (rate limit protection)
+
+    Returns:
+        List of normalized item dicts (same format as parse_bird_response).
+    """
+    if not _BIRD_TIMELINE_MJS.exists():
+        _log("bird-timeline.mjs not found")
+        return []
+    if not shutil.which("node"):
+        _log("Node.js not found")
+        return []
+
+    cmd = [
+        "node", str(_BIRD_TIMELINE_MJS),
+        "--bookmarks",
+        "--pages", str(pages),
+        "--delay", str(delay_ms),
+        "--json",
+    ]
+
+    _log(f"Fetching bookmarks ({pages} pages)")
+
+    preexec = os.setsid if hasattr(os, 'setsid') else None
+    timeout = max(60, pages * 15)
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            preexec_fn=preexec,
+            env=_subprocess_env(),
+        )
+        stdout, stderr = proc.communicate(timeout=timeout)
+
+        if stderr:
+            for line in stderr.strip().split('\n'):
+                if line.strip():
+                    _log(line.strip().removeprefix('[bird-timeline] '))
+
+        if proc.returncode != 0:
+            _log(f"Bookmarks fetch failed: {(stderr or '').strip()[:200]}")
+            return []
+
+        output = (stdout or "").strip()
+        if not output:
+            return []
+
+        response = json.loads(output)
+        return parse_bird_response(response, query="")
+
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (ProcessLookupError, PermissionError, OSError):
+            proc.kill()
+        _log("Bookmarks fetch timed out")
+        return []
+    except json.JSONDecodeError:
+        _log("Invalid JSON from bookmarks fetch")
+        return []
+    except Exception as e:
+        _log(f"Bookmarks fetch error: {e}")
+        return []
