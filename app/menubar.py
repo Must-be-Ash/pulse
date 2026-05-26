@@ -37,25 +37,23 @@ class PulseApp(rumps.App):
         self._poll_timer.start()
 
     def _build_menu(self) -> None:
-        run_all = rumps.MenuItem("Run All", callback=self._on_run_all)
+        run_all = rumps.MenuItem("\ud83d\ude80 Run All", callback=self._on_run_all)
 
         category_items = []
         for cat in cat_mod.all_categories():
             cat_menu = rumps.MenuItem(f"{cat.emoji} {cat.name}")
 
-            run_item = rumps.MenuItem("Run Now")
+            run_item = rumps.MenuItem("\u25b6\ufe0f Run Now")
             run_item.set_callback(self._make_run_callback(cat))
             self._run_items[cat.id] = run_item
 
-            view_item = rumps.MenuItem("View Latest Report")
+            view_item = rumps.MenuItem("\ud83d\udcc4 View Latest Report")
 
-            # Restore from disk if a previous run exists
+            # Dynamic lookup — callback checks latest run at click time
             existing = runner.get_latest_run(cat.id)
-            if existing and existing.report_html_path:
-                view_item.set_callback(self._make_view_callback(existing.report_html_path))
+            if existing:
                 self._notified_runs.add(existing.run_id)
-            else:
-                view_item.set_callback(None)
+            view_item.set_callback(self._make_view_callback(cat.id))
 
             self._view_items[cat.id] = view_item
 
@@ -64,14 +62,11 @@ class PulseApp(rumps.App):
 
             # Only Tech & AI gets audio
             if cat.id in _AUDIO_CATEGORIES:
-                audio_item = rumps.MenuItem("Play Audio")
-                stop_item = rumps.MenuItem("Stop Audio")
+                audio_item = rumps.MenuItem("\ud83d\udd0a Play Audio")
+                stop_item = rumps.MenuItem("\u23f9\ufe0f Stop Audio")
 
-                if existing and existing.audio_path:
-                    audio_item.set_callback(self._make_audio_callback(existing.audio_path))
-                    self._notified_runs.add(existing.run_id)
-                else:
-                    audio_item.set_callback(None)
+                # Always use dynamic lookup — callback checks latest run at click time
+                audio_item.set_callback(self._make_audio_callback(cat.id))
 
                 stop_item.set_callback(self._on_stop_audio)
                 self._audio_items[cat.id] = audio_item
@@ -92,14 +87,25 @@ class PulseApp(rumps.App):
             self._start_run(category)
         return callback
 
-    def _make_view_callback(self, html_path: str):
+    def _make_view_callback(self, category_id: str):
         def callback(sender):
+            # Always open the latest report for this category
+            latest = runner.get_latest_run(category_id)
+            html_path = latest.report_html_path if latest else None
+            if not html_path or not Path(html_path).exists():
+                rumps.notification("Pulse", "No Report", "No report found for this briefing.", sound=False)
+                return
             subprocess.Popen(["open", html_path])
         return callback
 
-    def _make_audio_callback(self, audio_path: str):
+    def _make_audio_callback(self, category_id: str):
         def callback(sender):
-            # Stop any currently playing audio first
+            # Always play the latest audio file for this category
+            latest = runner.get_latest_run(category_id)
+            audio_path = latest.audio_path if latest else None
+            if not audio_path or not Path(audio_path).exists():
+                rumps.notification("Pulse", "No Audio", "No audio file found for this briefing.", sound=False)
+                return
             self._kill_audio()
             self._audio_process = subprocess.Popen(["afplay", audio_path])
         return callback
@@ -187,25 +193,30 @@ class PulseApp(rumps.App):
                 run_item.title = f"Running: {last_msg}"
             return
 
-        # Check if any category just completed
+        # Check if any category just completed or failed
         for cat in cat_mod.all_categories():
             latest = runner.get_latest_run(cat.id)
-            if not latest or latest.status != "completed":
+            if not latest or latest.status not in ("completed", "failed"):
                 continue
             if latest.run_id in self._notified_runs:
                 continue
 
             self._notified_runs.add(latest.run_id)
-            view_item = self._view_items[cat.id]
 
-            if latest.report_html_path:
-                view_item.set_callback(self._make_view_callback(latest.report_html_path))
+            if latest.status == "failed":
+                error_msg = latest.error or "Unknown error"
+                if len(error_msg) > 80:
+                    error_msg = error_msg[:77] + "..."
+                rumps.notification(
+                    "Pulse",
+                    f"{cat.emoji} {cat.name}",
+                    f"Briefing failed: {error_msg}",
+                    sound=True,
+                )
+                continue
 
-            # Update audio only for Tech & AI
-            if cat.id in _AUDIO_CATEGORIES and latest.audio_path:
-                audio_item = self._audio_items.get(cat.id)
-                if audio_item:
-                    audio_item.set_callback(self._make_audio_callback(latest.audio_path))
+            # View and Audio callbacks are already dynamic (look up latest at click time)
+            # No need to update them here
 
             rumps.notification(
                 "Pulse",

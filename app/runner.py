@@ -56,13 +56,11 @@ def _restore_from_disk() -> None:
             continue
 
         latest_html = html_files[0]
-        # Find the closest audio file for this category
-        # HTML and audio may have slightly different timestamps (generated seconds apart)
+        # Find the most recent audio file for this category (mp3 or aiff)
         audio_path = None
-        audio_files = sorted(output_dir.glob(f"{slug}-*.aiff"), reverse=True)
-        if not audio_files:
-            audio_files = sorted(output_dir.glob(f"{slug}-*.mp3"), reverse=True)
+        audio_files = list(output_dir.glob(f"{slug}-*.mp3")) + list(output_dir.glob(f"{slug}-*.aiff"))
         if audio_files:
+            audio_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
             audio_path = str(audio_files[0])
 
         _latest_runs[cat.id] = RunState(
@@ -234,7 +232,7 @@ def _run_trends_pipeline(run_state: RunState, config: dict) -> None:
                 })
         sys.stderr.write(f"[Trends] HackerNews: {len(hn_seen)} unique stories from {len(hn_items)} results\n")
 
-    # Step 2c: Digg AI Top Stories (curated high-signal AI news)
+    # Step 2c: Digg AI Top Stories (curated high-signal AI news — protected from triage filtering)
     try:
         from .signal_agent.digg import fetch_top_stories
         digg_stories = fetch_top_stories()
@@ -246,6 +244,7 @@ def _run_trends_pipeline(run_state: RunState, config: dict) -> None:
                     "url": item.url,
                     "source_domain": "digg.com",
                     "date": item.date,
+                    "_protected": True,
                 })
             sys.stderr.write(f"[Trends] Digg Top Stories: {len(digg_stories)} items\n")
     except Exception as exc:
@@ -276,6 +275,7 @@ def _run_trends_pipeline(run_state: RunState, config: dict) -> None:
                 "author_handle": item.author,
                 "date": item.date,
                 "engagement": eng,
+                "_protected": True,
             })
         sys.stderr.write(f"[Trends] Grok scout: {len(grok_items)} additional tweets\n")
 
@@ -289,6 +289,7 @@ def _run_trends_pipeline(run_state: RunState, config: dict) -> None:
         if not url or url.lower() in seen_urls:
             continue
         seen_urls.add(url.lower())
+        metadata = {"protected": True} if item.get("_protected") else {}
         x_source_items.append(schema.SourceItem(
             item_id=f"trends-x-{i}",
             source="x",
@@ -301,6 +302,7 @@ def _run_trends_pipeline(run_state: RunState, config: dict) -> None:
                 k: v for k, v in (item.get("engagement") or {}).items()
                 if v is not None
             },
+            metadata=metadata,
         ))
 
     web_source_items = []
@@ -309,6 +311,7 @@ def _run_trends_pipeline(run_state: RunState, config: dict) -> None:
         if not url or url.lower() in seen_urls:
             continue
         seen_urls.add(url.lower())
+        metadata = {"protected": True} if item.get("_protected") else {}
         web_source_items.append(schema.SourceItem(
             item_id=f"trends-web-{i}",
             source="grounding",
@@ -317,6 +320,7 @@ def _run_trends_pipeline(run_state: RunState, config: dict) -> None:
             url=url,
             author=item.get("source_domain", ""),
             published_at=item.get("date"),
+            metadata=metadata,
         ))
 
     sys.stderr.write(
@@ -362,6 +366,11 @@ def _run_trends_pipeline(run_state: RunState, config: dict) -> None:
         run_state.report_html_path = graph_state.html_path
     if graph_state.audio_path:
         run_state.audio_path = graph_state.audio_path
+
+    # Fail loudly if no report was produced
+    if not graph_state.html_path:
+        errors = "; ".join(graph_state.errors) if graph_state.errors else "unknown error"
+        raise RuntimeError(f"Trends pipeline produced no report: {errors}")
 
 
 def _run_pipeline(
@@ -464,6 +473,7 @@ def _run_pipeline(
         run_state.status = "failed"
         run_state.error = str(exc)
         run_state.completed_at = datetime.now().isoformat()
+        _latest_runs[category.id] = run_state
     finally:
         sys.stderr = real_stderr
         with _run_lock:

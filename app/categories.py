@@ -205,7 +205,7 @@ CATEGORIES: list[Category] = [
         emoji="\U0001f4e1",  # 📡
         description="Narratives, debates, and zeitgeist — where the tech/AI space is heading",
         topic="AI technology trends narrative debate zeitgeist builder community",
-        lookback_days=3,
+        lookback_days=1,
         depth="exhaustive",
         x_list_ids=[
             "1953536336675365173",

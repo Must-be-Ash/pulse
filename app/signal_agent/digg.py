@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 _SCRIPTS_DIR = Path(__file__).parent.parent.parent / "scripts"
@@ -102,7 +103,7 @@ def fetch_top_stories(limit: int = 20) -> list[CompactItem]:
     Returns CompactItems for the Tech & AI Trends pipeline.
     """
     _ensure_synced()
-    raw = _run_cli(["top", "--limit", str(limit), "--agent"])
+    raw = _run_cli(["top", "--limit", str(limit), "--json"])
     if not raw:
         return []
 
@@ -113,16 +114,18 @@ def fetch_top_stories(limit: int = 20) -> list[CompactItem]:
         title = cluster.get("title", "")
         tldr = cluster.get("tldr", "")
         cluster_url_id = cluster.get("clusterUrlId", "")
-        rank = cluster.get("rank")
-        post_count = cluster.get("postCount", 0)
-        unique_authors = cluster.get("uniqueAuthors", 0)
+        rank = cluster.get("currentRank") or cluster.get("rank")
+        likes = cluster.get("likes", 0)
+        views = cluster.get("views", 0)
 
         if not title:
             continue
+        if not cluster_url_id:
+            continue  # Skip items without a unique URL
 
         text = f"{title} | {tldr}" if tldr else title
-        url = f"https://di.gg/ai/{cluster_url_id}" if cluster_url_id else "https://digg.com/ai"
-        eng = f"rank:{rank}, posts:{post_count}, authors:{unique_authors}" if rank else f"posts:{post_count}"
+        url = f"https://di.gg/ai/{cluster_url_id}"
+        eng = f"rank:{rank}, likes:{likes}, views:{views}" if rank else f"likes:{likes}, views:{views}"
 
         items.append(CompactItem(
             item_id=f"digg-{i}",
@@ -130,8 +133,9 @@ def fetch_top_stories(limit: int = 20) -> list[CompactItem]:
             url=url,
             source="grounding",
             author="Digg AI",
-            date="today",
+            date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             engagement=eng,
+            protected=True,
         ))
 
     _log(f"Top Stories: {len(items)} clusters")
@@ -178,8 +182,9 @@ def fetch_github_stars(limit: int = 15) -> list[CompactItem]:
             url=f"https://github.com/{full_name}",
             source="github",
             author=full_name.split("/")[0] if "/" in full_name else full_name,
-            date="recent",
+            date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             engagement=f"stars:{stars}, ai_score:{ai_score}, novel:{novel_score}, starrers:{distinct_starrers}",
+            protected=True,
         ))
 
     _log(f"GitHub Stars: {len(items)} repos")

@@ -47,9 +47,12 @@ def _chat_claude(
     if not api_key:
         raise RuntimeError("No CLAUDE_API_KEY in ~/.config/pulse/.env")
 
+    # Deep analysis needs more tokens for large signal sets
+    max_tok = 16384 if "sonnet" in model else 8192
+
     payload = {
         "model": model,
-        "max_tokens": 8192,
+        "max_tokens": max_tok,
         "system": prompt_system,
         "messages": [{"role": "user", "content": prompt_user}],
         "temperature": temperature,

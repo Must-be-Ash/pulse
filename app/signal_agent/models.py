@@ -33,6 +33,7 @@ class CompactItem:
     author: str
     date: str
     engagement: str    # compact engagement summary like "likes:42, retweets:5"
+    protected: bool = False  # If True, bypasses triage scoring (Digg, Grok items)
 
     @classmethod
     def from_source_item(cls, item: schema.SourceItem) -> CompactItem:
@@ -55,6 +56,7 @@ class CompactItem:
             author=item.author or "unknown",
             date=item.published_at or "unknown",
             engagement=engagement,
+            protected=bool((item.metadata or {}).get("protected")),
         )
 
 
@@ -77,6 +79,7 @@ class Signal(BaseModel):
         "paradigm_shift", "funding", "adoption", "drama",
         "narrative", "debate", "thought_leader", "industry_move",
         "funding_signal",
+        "science", "space", "health", "economy", "disaster",
     ] = "insight"
 
 

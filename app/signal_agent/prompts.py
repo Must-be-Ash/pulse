@@ -348,7 +348,8 @@ Rules:
 - Economy stories next (max 2-3)
 - Disasters last (only genuinely major ones)
 - Total: 4-8 stories. If fewer than 3 qualify, that's fine — don't pad.
-- Each story: declarative present-tense headline, 1-2 sentence summary with essential context
+- Each story needs: title, summary (1-2 sentences), why_it_matters (1 sentence), sources, source_types, score, category
+- Category must be one of: science, space, health, economy, disaster
 - Attribute to the most authoritative outlet (Reuters > AP > BBC > FT > NYT)
 - NO conflict, politics, diplomacy, opinion"""
 

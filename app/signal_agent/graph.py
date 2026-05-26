@@ -58,13 +58,19 @@ _MIN_LIKES = {
 def node_ingest(state: GraphState, report: schema.Report) -> None:
     """Node 1: Ingest all items from pipeline output, deduplicate, compact.
 
-    Pre-filters X items by engagement to cut noise (threshold varies by category).
+    Pre-filters X items by engagement and date to cut noise.
+    Protected items (Digg, Grok) bypass date and engagement filters.
     """
     t0 = time.time()
     seen_urls: set[str] = set()
     items: list[CompactItem] = []
     skipped_low_engagement = 0
+    skipped_old = 0
+    skipped_no_date = 0
     min_likes = _MIN_LIKES.get(state.category_id, 0)
+
+    # Date cutoff based on the report's date range
+    cutoff_date = report.range_from  # e.g. "2026-05-25"
 
     for source, source_items in report.items_by_source.items():
         for item in source_items:
@@ -73,25 +79,49 @@ def node_ingest(state: GraphState, report: schema.Report) -> None:
                 continue
             seen_urls.add(key)
 
-            # Filter low-engagement X items
-            if source == "x" and min_likes > 0:
-                likes = 0
-                eng = item.engagement or {}
-                for k in ("likes", "likeCount", "favorite_count"):
-                    v = eng.get(k)
-                    if isinstance(v, (int, float)) and v > likes:
-                        likes = v
-                if likes < min_likes:
-                    skipped_low_engagement += 1
+            is_protected = bool((item.metadata or {}).get("protected"))
+
+            # Protected items (Digg, Grok) bypass date and engagement filters
+            if not is_protected:
+                # Filter items older than the lookback window
+                if cutoff_date and item.published_at and len(item.published_at) >= 10:
+                    item_date = item.published_at[:10]
+                    if item_date < cutoff_date:
+                        skipped_old += 1
+                        continue
+                elif cutoff_date and not item.published_at:
+                    # No date at all — drop it (can't verify recency)
+                    skipped_no_date += 1
                     continue
+
+                # Filter low-engagement X items
+                if source == "x" and min_likes > 0:
+                    likes = 0
+                    eng = item.engagement or {}
+                    for k in ("likes", "likeCount", "favorite_count"):
+                        v = eng.get(k)
+                        if isinstance(v, (int, float)) and v > likes:
+                            likes = v
+                    if likes < min_likes:
+                        skipped_low_engagement += 1
+                        continue
 
             items.append(CompactItem.from_source_item(item))
 
     state.all_items = items
     state.timings["ingest"] = time.time() - t0
-    extra = f" (skipped {skipped_low_engagement} low-engagement)" if skipped_low_engagement else ""
+    protected_count = sum(1 for item in items if item.protected)
+    skipped_parts = []
+    if skipped_low_engagement:
+        skipped_parts.append(f"{skipped_low_engagement} low-engagement")
+    if skipped_old:
+        skipped_parts.append(f"{skipped_old} outside date range")
+    if skipped_no_date:
+        skipped_parts.append(f"{skipped_no_date} no date")
+    extra = f" (skipped {', '.join(skipped_parts)})" if skipped_parts else ""
+    prot_extra = f" ({protected_count} protected)" if protected_count else ""
     sys.stderr.write(
-        f"[SignalAgent] Node 1 (Ingest): {len(items)} unique items "
+        f"[SignalAgent] Node 1 (Ingest): {len(items)} unique items{prot_extra} "
         f"from {len(report.items_by_source)} sources{extra} "
         f"in {state.timings['ingest']:.1f}s\n"
     )
@@ -216,19 +246,28 @@ def _triage_batch(
 
 
 def node_triage(state: GraphState) -> None:
-    """Node 3: Score ALL items in batches using a fast/cheap model."""
+    """Node 3: Score items in batches. Protected items (Digg, Grok) bypass scoring."""
     t0 = time.time()
     items = state.all_items
     if not items:
         state.errors.append("No items to triage")
         return
 
+    # Separate protected items (Digg, Grok) — they skip triage entirely
+    protected_items = [item for item in items if item.protected]
+    triageable_items = [item for item in items if not item.protected]
+
+    if protected_items:
+        sys.stderr.write(
+            f"[SignalAgent] Node 3 (Triage): {len(protected_items)} protected items (Digg/Grok) bypass scoring\n"
+        )
+
     system_prompt = build_triage_system(state.category_id)
 
-    batches = [items[i:i + BATCH_SIZE] for i in range(0, len(items), BATCH_SIZE)]
+    batches = [triageable_items[i:i + BATCH_SIZE] for i in range(0, len(triageable_items), BATCH_SIZE)]
     total_batches = len(batches)
     sys.stderr.write(
-        f"[SignalAgent] Node 3 (Triage): {len(items)} items "
+        f"[SignalAgent] Node 3 (Triage): {len(triageable_items)} items "
         f"in {total_batches} batches\n"
     )
 
@@ -236,30 +275,31 @@ def node_triage(state: GraphState) -> None:
     include_engagement = state.category_id == "tech"
 
     all_scores: dict[str, tuple[float, str]] = {}
-    max_workers = min(4, total_batches)
+    max_workers = min(4, total_batches) if total_batches > 0 else 1
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(
-                _triage_batch, batch, i + 1, total_batches,
-                state.topic, system_prompt, include_engagement,
-            ): i
-            for i, batch in enumerate(batches)
-        }
-        for future in as_completed(futures):
-            batch_idx = futures[future]
-            try:
-                batch_scores = future.result()
-                all_scores.update(batch_scores)
-                sys.stderr.write(
-                    f"[SignalAgent] Triage batch {batch_idx + 1}/{total_batches}: "
-                    f"{len(batch_scores)} scored\n"
-                )
-            except Exception as exc:
-                state.errors.append(f"Triage batch {batch_idx} failed: {exc}")
+    if batches:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    _triage_batch, batch, i + 1, total_batches,
+                    state.topic, system_prompt, include_engagement,
+                ): i
+                for i, batch in enumerate(batches)
+            }
+            for future in as_completed(futures):
+                batch_idx = futures[future]
+                try:
+                    batch_scores = future.result()
+                    all_scores.update(batch_scores)
+                    sys.stderr.write(
+                        f"[SignalAgent] Triage batch {batch_idx + 1}/{total_batches}: "
+                        f"{len(batch_scores)} scored\n"
+                    )
+                except Exception as exc:
+                    state.errors.append(f"Triage batch {batch_idx} failed: {exc}")
 
     # Store scores
-    item_lookup = {item.item_id: item for item in items}
+    item_lookup = {item.item_id: item for item in triageable_items}
     state.triage_scores = {k: v[0] for k, v in all_scores.items()}
     state.triage_reasons = {k: v[1] for k, v in all_scores.items()}
 
@@ -293,11 +333,15 @@ def node_triage(state: GraphState) -> None:
             if score >= threshold and iid in item_lookup
         ][:200]
 
+    # Add protected items — they always make it through (dedup happens in deep analysis)
+    high_signal = protected_items + high_signal
+
     state.high_signal_items = high_signal
     state.timings["triage"] = time.time() - t0
     sys.stderr.write(
-        f"[SignalAgent] Node 3 (Triage): scored {len(all_scores)}/{len(items)}, "
-        f"{len(high_signal)} passed threshold ({threshold}) "
+        f"[SignalAgent] Node 3 (Triage): scored {len(all_scores)}/{len(triageable_items)}, "
+        f"{len(high_signal)} passed ({len(protected_items)} protected + "
+        f"{len(high_signal) - len(protected_items)} triaged at {threshold}) "
         f"in {state.timings['triage']:.1f}s\n"
     )
 
@@ -405,8 +449,8 @@ def node_deep_analysis(state: GraphState) -> None:
     include_engagement = state.category_id == "tech"
     all_signals: list[Signal] = []
 
-    # Chunk if > 200 items
-    MAX_ITEMS_PER_CALL = 200
+    # Chunk into manageable sizes — 75 items per call to stay within output token limits
+    MAX_ITEMS_PER_CALL = 75
     for chunk_start in range(0, len(items), MAX_ITEMS_PER_CALL):
         chunk = items[chunk_start:chunk_start + MAX_ITEMS_PER_CALL]
         items_block = _format_items_for_analysis(chunk, include_engagement=include_engagement)
@@ -425,9 +469,35 @@ def node_deep_analysis(state: GraphState) -> None:
                 f"[SignalAgent] Deep analysis chunk: {len(result.signals)} signals "
                 f"from {len(chunk)} items\n"
             )
-        except Exception as exc:
-            state.errors.append(f"Deep analysis chunk failed: {type(exc).__name__}: {exc}")
-            sys.stderr.write(f"[SignalAgent] Deep analysis chunk error: {exc}\n")
+        except (json.JSONDecodeError, Exception) as exc:
+            # Retry with half-chunk if JSON was truncated
+            if len(chunk) > 30:
+                sys.stderr.write(
+                    f"[SignalAgent] Deep analysis chunk failed ({type(exc).__name__}), "
+                    f"retrying with half ({len(chunk)//2} items)...\n"
+                )
+                half = len(chunk) // 2
+                for sub_chunk in [chunk[:half], chunk[half:]]:
+                    sub_block = _format_items_for_analysis(sub_chunk, include_engagement=include_engagement)
+                    sub_user = DEEP_ANALYSIS_USER.format(
+                        topic=state.topic,
+                        count=len(sub_chunk),
+                        items_block=sub_block,
+                    )
+                    try:
+                        raw2 = chat_json(system_prompt, sub_user, tier="deep", timeout=180)
+                        result2 = DeepAnalysisResult.model_validate(raw2)
+                        all_signals.extend(result2.signals)
+                        sys.stderr.write(
+                            f"[SignalAgent] Deep analysis retry chunk: {len(result2.signals)} signals "
+                            f"from {len(sub_chunk)} items\n"
+                        )
+                    except Exception as exc2:
+                        state.errors.append(f"Deep analysis retry failed: {type(exc2).__name__}: {exc2}")
+                        sys.stderr.write(f"[SignalAgent] Deep analysis retry error: {exc2}\n")
+            else:
+                state.errors.append(f"Deep analysis chunk failed: {type(exc).__name__}: {exc}")
+                sys.stderr.write(f"[SignalAgent] Deep analysis chunk error: {exc}\n")
 
     # Deduplicate signals across chunks
     if len(all_signals) > 1:
