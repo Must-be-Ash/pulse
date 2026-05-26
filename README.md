@@ -20,13 +20,11 @@ Built on [mvanhorn/last30days-skill](https://github.com/mvanhorn/last30days-skil
 git clone https://github.com/Must-be-Ash/pulse ~/pulse
 cd ~/pulse
 pip install -e ".[app]"
+npx -y @mvanhorn/printing-press-library install digg --cli-only  # optional: Digg AI source
+launchctl load ~/Library/LaunchAgents/com.pulse.app.plist
 ```
 
-### Optional: Digg source
-
-```bash
-npx -y @mvanhorn/printing-press-library install digg --cli-only
-```
+That's it. The satellite dish icon appears in your menu bar.
 
 ## Configure
 
@@ -45,8 +43,7 @@ CT0=                  # Required with AUTH_TOKEN
 TWITTER_BEARER_TOKEN= # From developer.x.com
 
 # LLM (required — powers the signal agent)
-OPENAI_API_KEY=       # For deep analysis (gpt-4o)
-CLAUDE_API_KEY=       # For triage (claude-haiku-4-5 — faster)
+CLAUDE_API_KEY=       # From console.anthropic.com (Haiku for triage, Sonnet for analysis)
 
 # Web search (recommended)
 EXA_API_KEY=          # exa.ai
@@ -62,23 +59,15 @@ SETUP_COMPLETE=true
 EOF
 ```
 
-**Minimum to get started:** `AUTH_TOKEN` + `CT0` + `OPENAI_API_KEY`.
+**Minimum to get started:** `AUTH_TOKEN` + `CT0` + `CLAUDE_API_KEY`.
 
-## Run
+## Use
 
-```bash
-pulse-app
-```
+Click the satellite dish icon in your menu bar. Pick a category. Click **Run Now**.
 
-A satellite dish icon appears in your menu bar. Click it to see the categories. Click **Run Now** on any category.
+To run manually without the menu bar: `pulse-app`
 
-### Auto-start on login
-
-```bash
-launchctl load ~/Library/LaunchAgents/com.pulse.app.plist
-```
-
-To stop: `launchctl unload ~/Library/LaunchAgents/com.pulse.app.plist`
+To stop auto-start: `launchctl unload ~/Library/LaunchAgents/com.pulse.app.plist`
 
 ## How it works
 
@@ -100,7 +89,7 @@ An LLM-powered pipeline replaces traditional keyword-based ranking:
 1. **Ingest** — deduplicate, compact items, filter by engagement
 2. **Gap Finder** — LLM identifies missing topics, runs targeted follow-up searches
 3. **Triage** — Claude Haiku scores every item 0-10 (batched, parallel)
-4. **Deep Analysis** — GPT-4o groups high-signal items into distinct signals
+4. **Deep Analysis** — Claude Sonnet groups high-signal items into distinct signals
 5. **Report** — generates HTML + ElevenLabs audio narration
 
 The agent reads `~/.config/pulse/SOUL.md` for your preferences and `~/.config/pulse/signal-examples-*.json` for taste calibration from your bookmarks.
@@ -145,7 +134,7 @@ To refresh from your Twitter bookmarks, the agent can pull and classify them aut
 | HackerNews | Free (Algolia API) |
 | Digg | Free (digg-pp-cli) |
 | Claude Haiku triage | ~$0.03 |
-| GPT-4o deep analysis | ~$0.15 |
+| Claude Sonnet deep analysis | ~$0.15 |
 | ElevenLabs audio | ~$0.03 |
 | **Total per category** | **~$0.20** |
 

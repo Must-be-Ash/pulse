@@ -1,4 +1,4 @@
-"""LLM client for the signal agent — Claude Haiku for triage, OpenAI for deep analysis."""
+"""LLM client for the signal agent — all Claude, OpenAI not required."""
 
 from __future__ import annotations
 
@@ -13,19 +13,25 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 from lib import env, http
 
-# Model tiers
+# All tiers use Claude via Anthropic API
 CLAUDE_TRIAGE_MODEL = "claude-haiku-4-5-20251001"
-OPENAI_DEEP_MODEL = "gpt-4o"
-OPENAI_SCRIPT_MODEL = "gpt-4o-mini"
+CLAUDE_DEEP_MODEL = "claude-sonnet-4-6"
+CLAUDE_SCRIPT_MODEL = "claude-haiku-4-5-20251001"
 
-# Fallbacks
-OPENAI_TRIAGE_MODEL = "gpt-4o-mini"
-XAI_TRIAGE_MODEL = "grok-4-1-fast"
-XAI_DEEP_MODEL = "grok-4-1-fast"
+# xAI fallback (if no Claude key)
+XAI_MODEL = "grok-4-1-fast"
 
 
 def _get_config() -> dict:
     return env.get_config()
+
+
+def _resolve_model(tier: str) -> str:
+    if tier == "triage":
+        return CLAUDE_TRIAGE_MODEL
+    if tier == "deep":
+        return CLAUDE_DEEP_MODEL
+    return CLAUDE_SCRIPT_MODEL
 
 
 def _chat_claude(
@@ -39,7 +45,7 @@ def _chat_claude(
     config = _get_config()
     api_key = config.get("CLAUDE_API_KEY")
     if not api_key:
-        raise RuntimeError("No CLAUDE_API_KEY")
+        raise RuntimeError("No CLAUDE_API_KEY in ~/.config/pulse/.env")
 
     payload = {
         "model": model,
@@ -60,7 +66,6 @@ def _chat_claude(
         timeout=timeout,
     )
 
-    # Anthropic format: {"content": [{"type": "text", "text": "..."}]}
     content = response.get("content", [])
     for block in content:
         if isinstance(block, dict) and block.get("type") == "text":
@@ -68,48 +73,33 @@ def _chat_claude(
     return ""
 
 
-def _chat_openai(
+def _chat_xai_fallback(
     prompt_system: str,
     prompt_user: str,
-    model: str,
     temperature: float,
     timeout: int,
-    json_mode: bool = False,
 ) -> str:
-    """Call OpenAI-compatible chat completions, return the text content."""
+    """Fallback to xAI if no Claude key. Uses OpenAI-compatible endpoint."""
     config = _get_config()
-
-    # Try OpenAI first, then xAI
-    openai_key = config.get("OPENAI_API_KEY")
-    if openai_key:
-        base_url = "https://api.openai.com/v1/chat/completions"
-        api_key = openai_key
-    else:
-        xai_key = config.get("XAI_API_KEY")
-        if not xai_key:
-            raise RuntimeError("No OPENAI_API_KEY or XAI_API_KEY")
-        base_url = "https://api.x.ai/v1/chat/completions"
-        api_key = xai_key
-        # Remap models for xAI
-        if model in (OPENAI_DEEP_MODEL, OPENAI_SCRIPT_MODEL, OPENAI_TRIAGE_MODEL):
-            model = XAI_DEEP_MODEL
+    xai_key = config.get("XAI_API_KEY")
+    if not xai_key:
+        raise RuntimeError("No CLAUDE_API_KEY or XAI_API_KEY")
 
     payload = {
-        "model": model,
+        "model": XAI_MODEL,
         "messages": [
             {"role": "system", "content": prompt_system},
             {"role": "user", "content": prompt_user},
         ],
         "temperature": temperature,
+        "response_format": {"type": "json_object"},
     }
-    if json_mode:
-        payload["response_format"] = {"type": "json_object"}
 
     response = http.post(
-        base_url,
+        "https://api.x.ai/v1/chat/completions",
         payload,
         headers={
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": f"Bearer {xai_key}",
             "Content-Type": "application/json",
         },
         timeout=timeout,
@@ -129,33 +119,21 @@ def chat_json(
 ) -> dict[str, Any]:
     """Send a chat completion and parse the response as JSON.
 
-    For triage: uses Claude Haiku (faster, cheaper).
-    For deep/script: uses OpenAI gpt-4o.
+    Uses Claude for all tiers. Falls back to xAI if no Claude key.
     """
     config = _get_config()
     has_claude = bool(config.get("CLAUDE_API_KEY"))
 
-    if tier == "triage" and has_claude:
-        # Use Claude Haiku for triage — faster than gpt-4o-mini
-        used_model = model or CLAUDE_TRIAGE_MODEL
-        # Claude doesn't have JSON mode — ask for JSON in the prompt
+    if has_claude:
+        used_model = model or _resolve_model(tier)
         prompt_user_json = prompt_user + "\n\nIMPORTANT: Return ONLY valid JSON, no other text."
         text = _chat_claude(prompt_system, prompt_user_json, used_model, temperature, timeout)
     else:
-        # Use OpenAI for deep analysis and scripts
-        if model is None:
-            if tier == "deep":
-                model = OPENAI_DEEP_MODEL
-            elif tier == "triage":
-                model = OPENAI_TRIAGE_MODEL
-            else:
-                model = OPENAI_SCRIPT_MODEL
-        text = _chat_openai(prompt_system, prompt_user, model, temperature, timeout, json_mode=True)
+        text = _chat_xai_fallback(prompt_system, prompt_user, temperature, timeout)
 
     # Parse JSON — handle potential markdown code blocks
     text = text.strip()
     if text.startswith("```"):
-        # Strip markdown code fences
         lines = text.split("\n")
         if lines[0].startswith("```"):
             lines = lines[1:]
@@ -175,7 +153,12 @@ def chat_text(
     temperature: float = 0.3,
     timeout: int = 60,
 ) -> str:
-    """Send a chat completion and return plain text."""
-    if model is None:
-        model = OPENAI_SCRIPT_MODEL
-    return _chat_openai(prompt_system, prompt_user, model, temperature, timeout)
+    """Send a chat completion and return plain text. Uses Claude Haiku."""
+    config = _get_config()
+
+    if config.get("CLAUDE_API_KEY"):
+        used_model = model or CLAUDE_SCRIPT_MODEL
+        return _chat_claude(prompt_system, prompt_user, used_model, temperature, timeout)
+
+    # xAI fallback
+    return _chat_xai_fallback(prompt_system, prompt_user, temperature, timeout)
