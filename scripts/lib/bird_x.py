@@ -477,6 +477,30 @@ def parse_bird_response(response: Dict[str, Any], query: str = "") -> List[Dict[
 
 _BIRD_TIMELINE_MJS = Path(__file__).parent / "vendor" / "bird-search" / "bird-timeline.mjs"
 
+# In-memory cache for list/home timeline fetches.
+# Key: list_id or "__home__". Value: (timestamp, items).
+# TTL: 30 minutes. Avoids re-fetching the same lists across categories in "Run All".
+_timeline_cache: Dict[str, tuple] = {}
+_CACHE_TTL = 1800  # 30 minutes
+
+
+def _cache_get(key: str) -> Optional[List[Dict[str, Any]]]:
+    """Return cached items if fresh, else None."""
+    entry = _timeline_cache.get(key)
+    if entry is None:
+        return None
+    cached_at, items = entry
+    import time as _time
+    if _time.time() - cached_at > _CACHE_TTL:
+        del _timeline_cache[key]
+        return None
+    return items
+
+
+def _cache_set(key: str, items: List[Dict[str, Any]]) -> None:
+    import time as _time
+    _timeline_cache[key] = (_time.time(), items)
+
 
 def fetch_list_timeline(
     list_id: str,
@@ -493,6 +517,12 @@ def fetch_list_timeline(
     Returns:
         List of normalized item dicts (same format as parse_bird_response).
     """
+    # Check cache first
+    cached = _cache_get(f"list:{list_id}")
+    if cached is not None:
+        _log(f"List {list_id}: {len(cached)} tweets (cached)")
+        return cached
+
     if not _BIRD_TIMELINE_MJS.exists():
         _log("bird-timeline.mjs not found")
         return []
@@ -538,7 +568,9 @@ def fetch_list_timeline(
             return []
 
         response = json.loads(output)
-        return parse_bird_response(response, query="")
+        items = parse_bird_response(response, query="")
+        _cache_set(f"list:{list_id}", items)
+        return items
 
     except subprocess.TimeoutExpired:
         try:
@@ -568,6 +600,11 @@ def fetch_home_timeline(
     Returns:
         List of normalized item dicts (same format as parse_bird_response).
     """
+    cached = _cache_get("__home__")
+    if cached is not None:
+        _log(f"Home timeline: {len(cached)} tweets (cached)")
+        return cached
+
     if not _BIRD_TIMELINE_MJS.exists():
         _log("bird-timeline.mjs not found")
         return []
@@ -613,7 +650,9 @@ def fetch_home_timeline(
             return []
 
         response = json.loads(output)
-        return parse_bird_response(response, query="")
+        items = parse_bird_response(response, query="")
+        _cache_set("__home__", items)
+        return items
 
     except subprocess.TimeoutExpired:
         try:
