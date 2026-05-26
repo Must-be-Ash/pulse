@@ -267,6 +267,8 @@ def get_config() -> dict[str, Any]:
         ('TWITTER_BEARER_TOKEN', None),
         # Claude / Anthropic
         ('CLAUDE_API_KEY', None),
+        # ElevenLabs TTS
+        ('ELEVENLABS_API_KEY', None),
         # Misc
         ('FROM_BROWSER', None),
         ('SETUP_COMPLETE', None),
