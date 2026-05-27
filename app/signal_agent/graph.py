@@ -662,4 +662,88 @@ def run_signal_graph(
         for err in state.errors:
             sys.stderr.write(f"  - {err}\n")
 
+    # Write structured run log — all this data already exists, just serializing it
+    _write_run_log(state, total_time)
+
     return state
+
+
+def _write_run_log(state: GraphState, total_time: float) -> None:
+    """Write a structured JSON run log for observability."""
+    from .. import reporter
+
+    out_dir = reporter._ensure_output_dir()
+    slug = reporter._slugify(state.category_name)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    log_path = out_dir / f"{slug}-{timestamp}-run.json"
+
+    # Build the triage detail: every item and what happened to it
+    triage_detail = []
+    for item in state.all_items:
+        score = state.triage_scores.get(item.item_id)
+        reason = state.triage_reasons.get(item.item_id)
+        passed = any(h.item_id == item.item_id for h in state.high_signal_items)
+        triage_detail.append({
+            "item_id": item.item_id,
+            "text": item.text[:200],
+            "url": item.url,
+            "source": item.source,
+            "author": item.author,
+            "date": item.date,
+            "engagement": item.engagement,
+            "protected": item.protected,
+            "triage_score": score,
+            "triage_reason": reason,
+            "passed_to_deep_analysis": passed,
+        })
+
+    # Sort: passed items first (by score desc), then failed items (by score desc)
+    triage_detail.sort(key=lambda x: (not x["passed_to_deep_analysis"], -(x["triage_score"] or 0)))
+
+    run_log = {
+        "category_id": state.category_id,
+        "category_name": state.category_name,
+        "timestamp": timestamp,
+        "total_time_seconds": round(total_time, 1),
+        "timings": {k: round(v, 1) for k, v in state.timings.items()},
+        "errors": state.errors,
+        "ingest": {
+            "total_items": len(state.all_items),
+            "protected_items": sum(1 for i in state.all_items if i.protected),
+        },
+        "gap_finder": {
+            "covered_topics": state.gap_analysis.covered_topics if state.gap_analysis else [],
+            "missing_topics": state.gap_analysis.missing_topics if state.gap_analysis else [],
+            "searches_run": len(state.gap_analysis.suggested_searches) if state.gap_analysis else 0,
+        },
+        "triage": {
+            "total_scored": len(state.triage_scores),
+            "passed_threshold": len(state.high_signal_items),
+            "protected_bypassed": sum(1 for i in state.high_signal_items if i.protected),
+        },
+        "deep_analysis": {
+            "signals_produced": len(state.signals),
+            "signals": [
+                {
+                    "title": s.title,
+                    "score": s.score,
+                    "category": s.category,
+                    "sources": s.sources,
+                    "source_types": s.source_types,
+                    "summary": s.summary[:200],
+                }
+                for s in state.signals
+            ],
+        },
+        "report": {
+            "html_path": state.html_path,
+            "audio_path": state.audio_path,
+        },
+        "items": triage_detail,
+    }
+
+    try:
+        log_path.write_text(json.dumps(run_log, indent=2, default=str), encoding="utf-8")
+        sys.stderr.write(f"[SignalAgent] Run log: {log_path}\n")
+    except Exception as exc:
+        sys.stderr.write(f"[SignalAgent] Failed to write run log: {exc}\n")

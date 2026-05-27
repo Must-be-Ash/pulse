@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+import itertools
 from typing import Any
 from urllib.parse import urlparse
 
 from . import dates, schema
+
+# Global counter for unique item IDs across all normalize calls in a process.
+# Prevents ID collisions when multiple sources (6 X lists, search, etc.)
+# each independently produce sequential IDs like X1, X2, X3.
+_id_seq = itertools.count(1)
+
+
+def _unique_id(prefix: str) -> str:
+    """Generate a globally unique item ID like X1, X2, ... across all calls."""
+    return f"{prefix}{next(_id_seq)}"
 
 
 def filter_by_date_range(
@@ -143,7 +154,7 @@ def _normalize_reddit(
         if part
     )
     return _source_item(
-        item_id=str(item.get("id") or f"R{index + 1}"),
+        item_id=_unique_id("R"),
         source=source,
         title=str(item.get("title") or ""),
         body=body,
@@ -172,7 +183,7 @@ def _normalize_x(
 ) -> schema.SourceItem:
     text = str(item.get("text") or "").strip()
     return _source_item(
-        item_id=str(item.get("id") or f"X{index + 1}"),
+        item_id=_unique_id("X"),
         source=source,
         title=text[:140] or f"X post {index + 1}",
         body=text,
@@ -201,7 +212,7 @@ def _normalize_youtube(
     if highlights:
         metadata["transcript_highlights"] = highlights
     return _source_item(
-        item_id=str(item.get("video_id") or item.get("id") or f"YT{index + 1}"),
+        item_id=_unique_id("YT"),
         source=source,
         title=title,
         body="\n".join(part for part in [title, description, transcript] if part),
@@ -230,7 +241,7 @@ def _normalize_shortform_video(
     caption = str(item.get("caption_snippet") or "").strip()
     text = str(item.get("text") or "").strip()
     return _source_item(
-        item_id=str(item.get("id") or f"{id_prefix}{index + 1}"),
+        item_id=_unique_id(id_prefix),
         source=source,
         title=text[:140] or caption[:140] or f"{default_title} {index + 1}",
         body="\n".join(part for part in [text, caption] if part),
@@ -259,7 +270,7 @@ def _normalize_pinterest(
     """
     description = str(item.get("description") or "").strip()
     return _source_item(
-        item_id=str(item.get("pin_id") or item.get("id") or f"PI{index + 1}"),
+        item_id=_unique_id("PI"),
         source=source,
         title=description[:140] or f"Pinterest pin {index + 1}",
         body=description,
@@ -291,7 +302,7 @@ def _normalize_hackernews(
     title = str(item.get("title") or "").strip()
     body = "\n".join(part for part in [title, str(item.get("text") or "").strip(), comment_text] if part)
     return _source_item(
-        item_id=str(item.get("id") or f"HN{index + 1}"),
+        item_id=_unique_id("HN"),
         source=source,
         title=title or f"HN story {index + 1}",
         body=body,
@@ -324,7 +335,7 @@ def _normalize_microblog(
     """Shared normalizer for Bluesky and Truth Social (identical structure)."""
     text = str(item.get("text") or "").strip()
     return _source_item(
-        item_id=str(item.get("id") or f"{id_prefix}{index + 1}"),
+        item_id=_unique_id(id_prefix),
         source=source,
         title=text[:140] or f"{default_title} {index + 1}",
         body=text,
@@ -353,7 +364,7 @@ def _normalize_polymarket(
         "liquidity": item.get("liquidity") or 0,
     }
     return _source_item(
-        item_id=str(item.get("id") or f"PM{index + 1}"),
+        item_id=_unique_id("PM"),
         source=source,
         title=title or question or f"Polymarket event {index + 1}",
         body="\n".join(part for part in [title, question, str(item.get("price_movement") or "")] if part),
@@ -394,7 +405,7 @@ def _normalize_github(
     body = "\n".join(part for part in [title, snippet_text, comment_text] if part)
     metadata = item.get("metadata") or {}
     return _source_item(
-        item_id=str(item.get("id") or f"GH{index + 1}"),
+        item_id=_unique_id("GH"),
         source=source,
         title=title or f"GitHub item {index + 1}",
         body=body,
@@ -426,7 +437,7 @@ def _normalize_grounding(
     snippet = str(item.get("snippet") or "").strip()
     url = str(item.get("url") or "").strip()
     return _source_item(
-        item_id=str(item.get("id") or f"W{index + 1}"),
+        item_id=_unique_id("W"),
         source=source,
         title=title or _domain_from_url(url) or f"Web result {index + 1}",
         body="\n".join(part for part in [title, snippet] if part),

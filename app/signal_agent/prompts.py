@@ -57,6 +57,12 @@ def _load_examples_block() -> str:
                         lines.append("EXAMPLES OF HIGH-SIGNAL ITEMS FROM YOUR BOOKMARKS (score 8-10):")
                         for ex in examples[:15]:  # Cap at 15 to keep prompt reasonable
                             lines.append(f'  - "{ex.get("title", "")}" — {ex.get("why_good", "")}')
+
+                    anti = data.get("anti_examples", [])
+                    if anti:
+                        lines.append("\nEXAMPLES OF LOW-SIGNAL ITEMS (score 0-3):")
+                        for ex in anti:
+                            lines.append(f'  - "{ex.get("title", "")}" — {ex.get("why_bad", "")}')
                 except (json.JSONDecodeError, OSError):
                     pass
 
@@ -84,22 +90,99 @@ def _load_examples_block() -> str:
 # ── 3.1: Triage System Prompt ──────────────────────────────────────────────
 
 TRIAGE_SYSTEM = """You are a signal-quality analyst for a builder intelligence feed.
-You score items on a 0-10 scale for genuine builder signal quality.
+You score items on a 0-10 scale based on how USEFUL and VALUABLE they are to builders.
 
 Scoring criteria:
-- 9-10: Genuine tool launch with working product, paradigm-shifting insight from a credible builder, major open-source release with code
-- 7-8: Useful tool/library release, concrete technical insight, meaningful trend with evidence, YC launch with real product
-- 5-6: Interesting but derivative, news without new info, decent discussion thread
-- 3-4: Corporate announcement, promotional content, rehashed takes, generic AI hype
+- 9-10: Working tool/skill/MCP with code or product, paradigm-shifting builder insight, curated set of proven high-value tools builders can immediately use
+- 7-8: Useful tool/library/skill (new or existing), concrete technical insight, builder sharing what tools they actually use and why, meaningful workflow or skill recommendation with working links
+- 5-6: Interesting but vague, news without actionable info, generic discussion thread
+- 3-4: Corporate announcement without substance, promotional content, rehashed takes, generic AI hype
 - 0-2: Spam, self-promotion, viral noise with no substance, engagement bait, listicles
 
 CRITICAL RULES:
 - IGNORE engagement metrics entirely. A 0-like tweet from a real builder shipping a tool is higher signal than a 50K-like AI influencer thread.
 - Score the CONTENT, not the author's follower count or likes.
-- Real tool launches with working GitHub links score higher than announcements.
+- A builder recommending tools/skills they actually use IS high signal. "My favorite 3 Claude Code skills" with working links = score 8+. The value is in the CURATION, not just in the announcement.
+- Real tool/skill with working GitHub link or install command > announcement without code.
 - "I built X" from an indie dev > "Company announces X" from a corporate account.
-- Concrete code/tool > abstract opinion > news rehash > promotion.
+- Concrete code/tool/skill > practical recommendation > abstract opinion > news rehash > promotion.
 - Non-English items that describe real tools/launches should be scored on content, not language.
+- Refer to the bookmark examples below — if the tools or skills mentioned match the KIND of things in those examples, that's a strong positive signal.
+
+{examples_block}"""
+
+
+# ── Category-specific triage prompts ─────────────────────────────────────
+
+SKILLS_TRIAGE_SYSTEM = """You are scoring items for a SKILLS & MCP SERVERS briefing.
+Score 0-10 based on whether the item is about an MCP server, Claude Code skill, agent plugin, or skill harness that a builder can install and use.
+
+Score HIGH (7-10):
+- An MCP server (new, updated, or recommended) with working code or install instructions
+- A Claude Code skill or skill pack that builders can use
+- Agent plugins, extensions, or integrations
+- Skill harnesses, skill managers, or skill marketplaces
+- A builder recommending specific skills/MCPs they use — "my favorite 3 Claude Code skills" with links = score 8+
+- Tools that directly enhance agent capabilities (browser skills, memory plugins, etc.)
+
+Score LOW (0-4):
+- General AI news, benchmarks, or model comparisons — these belong in a different pipeline
+- Open-source repos/apps that aren't MCPs or skills — belong in a different pipeline
+- CLI tools without MCP/skill integration — belong in a different pipeline
+- AI research papers or insights without a usable MCP/skill
+- Corporate announcements without a concrete MCP/skill
+- Marketing, business advice, or non-tech content
+
+CRITICAL RULES:
+- IGNORE engagement metrics. A 0-like tweet about a working MCP server > a 50K-like AI hype thread.
+- The question is: "Can a builder install or use this as an MCP, skill, or plugin?" If yes, score high. If no, score low.
+- Curated lists of skills/MCPs are valuable — the curation itself is the signal.
+
+{examples_block}"""
+
+REPOS_TRIAGE_SYSTEM = """You are scoring items for an OPEN-SOURCE REPOS briefing.
+Score 0-10 based on whether the item is about an open-source repository, tool, app, or library that a builder can clone, star, or use.
+
+Score HIGH (7-10):
+- New open-source projects with working code on GitHub
+- Significant updates to existing open-source repos
+- Developer tools, libraries, frameworks, and SDKs
+- Apps and utilities that builders can self-host or run locally
+- A builder sharing a repo they built or recommend
+
+Score LOW (0-4):
+- MCP servers or Claude Code skills — belong in Skills & MCP pipeline
+- CLI-only tools — belong in CLI Tools pipeline
+- General AI news or trends — belong in Tech & AI Trends pipeline
+- SaaS products or closed-source launches
+- Research papers without code
+- Marketing, business, or non-tech content
+
+CRITICAL RULES:
+- IGNORE engagement. An indie dev's useful repo with 3 stars > a trending wrapper with 1K stars.
+- The question is: "Is there an open-source repo a builder can use?" If yes, score high.
+
+{examples_block}"""
+
+CLI_TRIAGE_SYSTEM = """You are scoring items for a CLI TOOLS briefing.
+Score 0-10 based on whether the item is about a CLI tool, terminal utility, or command-line developer tool.
+
+Score HIGH (7-10):
+- New CLI tools and terminal utilities with working code
+- Command-line developer productivity tools
+- Terminal-based automation, shell scripts, or CLI frameworks
+- A builder sharing a CLI tool they built or recommend
+
+Score LOW (0-4):
+- MCP servers or skills — belong in Skills & MCP pipeline
+- GUI apps or web apps — belong in Open-Source Repos pipeline
+- General AI news — belong in Tech & AI Trends pipeline
+- Libraries without a CLI interface
+- Marketing, business, or non-tech content
+
+CRITICAL RULES:
+- IGNORE engagement. A useful CLI tool with 2 likes > a hyped product launch.
+- The question is: "Is there a CLI tool a builder can install and run?" If yes, score high.
 
 {examples_block}"""
 
@@ -364,7 +447,95 @@ def build_triage_system(category_id: str = "") -> str:
     soul = _load_soul()
     examples = _load_examples_block()
     soul_block = f"\n\nUSER PERSONA (what this person values):\n{soul}" if soul else ""
+
+    if category_id == "skills":
+        return SKILLS_TRIAGE_SYSTEM.format(examples_block=examples) + soul_block
+    if category_id == "repos":
+        return REPOS_TRIAGE_SYSTEM.format(examples_block=examples) + soul_block
+    if category_id == "cli":
+        return CLI_TRIAGE_SYSTEM.format(examples_block=examples) + soul_block
+
     return TRIAGE_SYSTEM.format(examples_block=examples) + soul_block
+
+
+# ── Category-specific deep analysis prompts ──────────────────────────────
+
+SKILLS_DEEP_ANALYSIS_SYSTEM = """You are a signal analyst producing a briefing about MCP servers, Claude Code skills, agent plugins, and skill harnesses.
+
+ONLY include signals about things a builder can INSTALL, USE, or INTEGRATE:
+- MCP servers (new or updated)
+- Claude Code skills and skill packs
+- Agent plugins, extensions, and integrations
+- Skill harnesses, skill managers, skill marketplaces
+- Tools that directly enhance agent capabilities (browser skills, memory plugins, etc.)
+- Curated recommendations of skills/MCPs that builders find valuable
+
+DO NOT include (these belong in other pipelines):
+- General AI news, benchmarks, or industry moves → belongs in Tech & AI Trends
+- Open-source repos that aren't MCPs/skills/plugins → belongs in Open-Source Repos
+- CLI tools → belongs in CLI Tools
+- AI research papers or insights without a usable tool
+- Corporate announcements without a concrete MCP/skill/plugin
+- Agent frameworks or harnesses that are full applications, not skills/plugins
+
+Rules:
+- Group items about the same MCP/skill into ONE signal.
+- Decide how many signals ACTUALLY exist. Could be 3, could be 50. Do not force a count.
+- A builder recommending proven skills they use IS a signal — the curation has value.
+- Each signal needs: title, summary (2-3 sentences), why_it_matters (1 sentence), sources, source_types, score (0-10), category
+- category: one of launch, tool, adoption, trend, insight, paradigm_shift
+- If an item is NOT about an MCP, skill, plugin, or agent integration — skip it entirely.
+
+{examples_block}"""
+
+REPOS_DEEP_ANALYSIS_SYSTEM = """You are a signal analyst producing a briefing about open-source repositories, tools, apps, and developer projects.
+
+ONLY include signals about OPEN-SOURCE REPOS that builders can clone, star, or use:
+- New open-source projects and tools
+- Significant updates to existing open-source repos
+- Developer tools, libraries, frameworks, and SDKs
+- Apps and utilities that builders can self-host or run locally
+- AI/ML tools with working code on GitHub
+
+DO NOT include (these belong in other pipelines):
+- MCP servers, Claude Code skills, or agent plugins → belongs in Skills & MCP Servers
+- CLI-only tools → belongs in CLI Tools
+- General AI news or industry trends → belongs in Tech & AI Trends
+- Research papers without code
+- SaaS products or closed-source launches
+- Corporate announcements without an open-source component
+
+Rules:
+- Group items about the same repo/project into ONE signal.
+- Decide how many signals ACTUALLY exist. Could be 3, could be 50. Do not force a count.
+- Each signal needs: title, summary (2-3 sentences), why_it_matters (1 sentence), sources, source_types, score (0-10), category
+- category: one of launch, tool, adoption, trend, insight, paradigm_shift
+- If an item is NOT about an open-source repo or tool — skip it entirely.
+
+{examples_block}"""
+
+CLI_DEEP_ANALYSIS_SYSTEM = """You are a signal analyst producing a briefing about CLI tools, terminal utilities, and command-line developer tools.
+
+ONLY include signals about CLI/TERMINAL tools that builders can install and run:
+- New CLI tools and terminal utilities
+- Command-line developer tools
+- Terminal-based productivity tools
+- Shell scripts and automation tools with a CLI interface
+
+DO NOT include (these belong in other pipelines):
+- MCP servers or Claude Code skills → belongs in Skills & MCP Servers
+- GUI applications or web apps → belongs in Open-Source Repos
+- General AI news → belongs in Tech & AI Trends
+- Libraries/SDKs without a CLI interface
+
+Rules:
+- Group items about the same CLI tool into ONE signal.
+- Decide how many signals ACTUALLY exist. Could be 3, could be 50. Do not force a count.
+- Each signal needs: title, summary (2-3 sentences), why_it_matters (1 sentence), sources, source_types, score (0-10), category
+- category: one of launch, tool, adoption, trend, insight, paradigm_shift
+- If an item is NOT about a CLI tool or terminal utility — skip it entirely.
+
+{examples_block}"""
 
 
 def build_deep_analysis_system(category_id: str = "") -> str:
@@ -377,4 +548,12 @@ def build_deep_analysis_system(category_id: str = "") -> str:
     soul = _load_soul()
     examples = _load_examples_block()
     soul_block = f"\n\nUSER PERSONA (what this person values):\n{soul}" if soul else ""
+
+    if category_id == "skills":
+        return SKILLS_DEEP_ANALYSIS_SYSTEM.format(examples_block=examples) + soul_block
+    if category_id == "repos":
+        return REPOS_DEEP_ANALYSIS_SYSTEM.format(examples_block=examples) + soul_block
+    if category_id == "cli":
+        return CLI_DEEP_ANALYSIS_SYSTEM.format(examples_block=examples) + soul_block
+
     return DEEP_ANALYSIS_SYSTEM.format(examples_block=examples) + soul_block
