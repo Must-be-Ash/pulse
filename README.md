@@ -4,6 +4,42 @@ A macOS menu bar app that surfaces what matters in AI/tech — tools, repos, ski
 
 Built on [mvanhorn/last30days-skill](https://github.com/mvanhorn/last30days-skill).
 
+## Install
+
+```bash
+git clone https://github.com/Must-be-Ash/pulse ~/pulse && bash ~/pulse/install.sh
+```
+
+That's it. The 📡 icon appears in your menu bar.
+
+## Add your API keys
+
+Open `~/.config/pulse/.env` and fill in your keys:
+
+```bash
+AUTH_TOKEN=        # x.com → F12 → Application → Cookies
+CT0=               # same place as AUTH_TOKEN
+CLAUDE_API_KEY=    # console.anthropic.com
+```
+
+Those three are the minimum. Optional keys for richer results:
+
+| Key | What it adds |
+|---|---|
+| `TWITTER_BEARER_TOKEN` | Fetching specific tweets |
+| `EXA_API_KEY` | Neural web search |
+| `SERPER_API_KEY` | Google search grounding |
+| `XAI_API_KEY` | Grok scout for trends |
+| `GITHUB_TOKEN` | Deeper repo search |
+| `FIRECRAWL_API_KEY` | URL scraping |
+| `ELEVENLABS_API_KEY` | Pro audio narration (falls back to macOS `say`) |
+
+## Use
+
+Click 📡 in your menu bar. Pick a category. Click **Run Now**.
+
+Pulse auto-starts on login. To restart manually: `open -a Pulse`
+
 ## Categories
 
 | Category | What it finds | Sources |
@@ -13,61 +49,6 @@ Built on [mvanhorn/last30days-skill](https://github.com/mvanhorn/last30days-skil
 | **Skills & MCP Servers** | Claude Code skills, MCP servers, agent tools | X lists, GitHub, HN, Reddit |
 | **Tech & AI Trends** | Narratives, debates, zeitgeist | X lists, X home, HN, Digg, Grok, Exa |
 | **World News** | Science, health, economy, major events | Exa web search |
-
-## Install
-
-```bash
-git clone https://github.com/Must-be-Ash/pulse ~/pulse
-cd ~/pulse
-pip install -e ".[app]"
-npx -y @mvanhorn/printing-press-library install digg --cli-only  # optional: Digg AI source
-launchctl load ~/Library/LaunchAgents/com.pulse.app.plist
-```
-
-That's it. The satellite dish icon appears in your menu bar.
-
-## Configure
-
-Create `~/.config/pulse/.env`:
-
-```bash
-mkdir -p ~/.config/pulse
-
-cat > ~/.config/pulse/.env << 'EOF'
-# X/Twitter cookies (free search via Bird — primary source)
-LAST30DAYS_X_BACKEND=bird
-AUTH_TOKEN=           # From x.com cookies (F12 > Application > Cookies)
-CT0=                  # Required with AUTH_TOKEN
-
-# Twitter API v2 (for fetching specific tweets)
-TWITTER_BEARER_TOKEN= # From developer.x.com
-
-# LLM (required — powers the signal agent)
-CLAUDE_API_KEY=       # From console.anthropic.com (Haiku for triage, Sonnet for analysis)
-
-# Web search (recommended)
-EXA_API_KEY=          # exa.ai
-SERPER_API_KEY=       # serper.dev
-
-# Optional
-XAI_API_KEY=          # Grok scout for trends
-GITHUB_TOKEN=         # Deeper repo search
-FIRECRAWL_API_KEY=    # URL scraping for signal enrichment
-ELEVENLABS_API_KEY=   # Pro audio narration (falls back to macOS say)
-
-SETUP_COMPLETE=true
-EOF
-```
-
-**Minimum to get started:** `AUTH_TOKEN` + `CT0` + `CLAUDE_API_KEY`.
-
-## Use
-
-Click the satellite dish icon in your menu bar. Pick a category. Click **Run Now**.
-
-To run manually without the menu bar: `pulse-app`
-
-To stop auto-start: `launchctl unload ~/Library/LaunchAgents/com.pulse.app.plist`
 
 ## How it works
 
@@ -123,8 +104,6 @@ The signal agent learns what you value from example files:
   signal-examples-design.json          — design bookmark examples
 ```
 
-To refresh from your Twitter bookmarks, the agent can pull and classify them automatically.
-
 ## Cost
 
 | Component | Cost per run |
@@ -138,12 +117,10 @@ To refresh from your Twitter bookmarks, the agent can pull and classify them aut
 | ElevenLabs audio | ~$0.03 |
 | **Total per category** | **~$0.20** |
 
-## CLI usage
-
-The research engine also works standalone:
+## Uninstall
 
 ```bash
-python3.12 scripts/pulse.py "Claude Code skills" --deep --emit=compact
+bash ~/pulse/uninstall.sh
 ```
 
 ## Credits
