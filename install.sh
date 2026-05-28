@@ -50,9 +50,8 @@ else
 fi
 
 # ── 3. Kill existing Pulse if running ────────────────────────────
-if launchctl list 2>/dev/null | grep -q com.pulse.app; then
-    launchctl unload "$PLIST" 2>/dev/null || true
-fi
+launchctl bootout "gui/$(id -u)/com.pulse.app" 2>/dev/null || true
+launchctl unload "$PLIST" 2>/dev/null || true
 pkill -f "pulse-launcher" 2>/dev/null || true
 pkill -f "from app.menubar import main" 2>/dev/null || true
 sleep 1
@@ -105,7 +104,7 @@ chmod +x "$APP_DIR/Contents/MacOS/pulse-launcher"
 echo "  → Setting up auto-start..."
 mkdir -p "$(dirname "$PLIST")"
 
-cat > "$PLIST" << 'AGENTEOF'
+cat > "$PLIST" << AGENTEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -114,9 +113,9 @@ cat > "$PLIST" << 'AGENTEOF'
     <string>com.pulse.app</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/open</string>
-        <string>-a</string>
-        <string>/Applications/Pulse.app</string>
+        <string>$VENV_DIR/bin/python</string>
+        <string>-c</string>
+        <string>import sys; sys.path.insert(0, '$PULSE_DIR'); sys.path.insert(0, '$PULSE_DIR/scripts'); from app.menubar import main; main()</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -130,7 +129,7 @@ cat > "$PLIST" << 'AGENTEOF'
 </plist>
 AGENTEOF
 
-launchctl load "$PLIST"
+launchctl load "$PLIST" 2>/dev/null || launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || true
 
 # ── 6. Launch ────────────────────────────────────────────────────
 echo "  → Launching Pulse..."
