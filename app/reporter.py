@@ -352,54 +352,12 @@ footer{{margin-top:1.5rem;padding-top:1rem;color:#aeaeb2;font-size:.7rem;display
     return out_path
 
 
-def _elevenlabs_tts(text: str, out_path: Path) -> bool:
-    """Generate audio via ElevenLabs API. Returns True on success."""
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
-    from lib import env
-
-    config = env.get_config()
-    api_key = config.get("ELEVENLABS_API_KEY")
-    if not api_key:
-        return False
-
-    import requests
-
-    voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel — clear, professional
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-
-    try:
-        resp = requests.post(
-            url,
-            headers={
-                "xi-api-key": api_key,
-                "Content-Type": "application/json",
-            },
-            json={
-                "text": text,
-                "model_id": "eleven_turbo_v2_5",
-                "voice_settings": {
-                    "stability": 0.5,
-                    "similarity_boost": 0.75,
-                },
-            },
-            timeout=30,
-        )
-        if resp.status_code == 200 and len(resp.content) > 1000:
-            mp3_path = out_path.with_suffix(".mp3")
-            mp3_path.write_bytes(resp.content)
-            return True
-        return False
-    except Exception:
-        return False
-
-
 def generate_signal_audio(
     signals: list,
     narration_script: str,
     category_name: str,
 ) -> Path | None:
-    """Generate audio narration. ElevenLabs first, macOS say fallback."""
+    """Generate audio narration via macOS say."""
     out_dir = _ensure_output_dir()
     slug = _slugify(category_name)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -408,13 +366,6 @@ def generate_signal_audio(
     if not narration_script or not narration_script.strip():
         return None
 
-    # Try ElevenLabs first
-    if _elevenlabs_tts(narration_script, Path(f"{out_path}")):
-        mp3_path = Path(f"{out_path}.mp3")
-        if mp3_path.exists():
-            return mp3_path
-
-    # Fallback to macOS say
     aiff_path = Path(f"{out_path}.aiff")
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
         f.write(narration_script)

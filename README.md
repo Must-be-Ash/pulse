@@ -32,7 +32,6 @@ Those three are the minimum. Optional keys for richer results:
 | `XAI_API_KEY` | Grok scout for trends |
 | `GITHUB_TOKEN` | Deeper repo search |
 | `FIRECRAWL_API_KEY` | URL scraping |
-| `ELEVENLABS_API_KEY` | Pro audio narration (falls back to macOS `say`) |
 
 ## Use
 
@@ -71,7 +70,7 @@ An LLM-powered pipeline replaces traditional keyword-based ranking:
 2. **Gap Finder** — LLM identifies missing topics, runs targeted follow-up searches
 3. **Triage** — Claude Haiku scores every item 0-10 (batched, parallel)
 4. **Deep Analysis** — Claude Sonnet groups high-signal items into distinct signals
-5. **Report** — generates HTML + ElevenLabs audio narration
+5. **Report** — generates HTML + audio narration (macOS `say`)
 
 The agent reads `~/.config/pulse/SOUL.md` for your preferences and `~/.config/pulse/signal-examples-*.json` for taste calibration from your bookmarks.
 
@@ -87,7 +86,7 @@ Unlike the tool-finding categories, Tech & AI Trends uses a timeline-first appro
 
 Reports save to `~/Documents/Pulse/`:
 - `{category}-{timestamp}.html` — self-contained HTML report
-- `{category}-{timestamp}.mp3` — ElevenLabs audio narration (or `.aiff` via macOS say)
+- `{category}-{timestamp}.aiff` — audio narration (macOS `say`)
 - `{category}-{timestamp}-raw.md` — full raw data dump (for tool categories)
 
 ## Taste calibration
@@ -114,8 +113,8 @@ The signal agent learns what you value from example files:
 | Digg | Free (digg-pp-cli) |
 | Claude Haiku triage | ~$0.03 |
 | Claude Sonnet deep analysis | ~$0.15 |
-| ElevenLabs audio | ~$0.03 |
-| **Total per category** | **~$0.20** |
+| Audio (macOS say) | Free |
+| **Total per category** | **~$0.18** |
 
 ## Uninstall
 

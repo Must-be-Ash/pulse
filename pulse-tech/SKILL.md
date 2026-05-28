@@ -3,7 +3,7 @@ name: pulse-tech
 version: "2.1.0"
 description: "Zeitgeist tracker for builders — what the builder community is actually adopting, excited about, and talking about. Trends, viral tools, paradigm shifts, YC launches, funding. pulse-tools finds hidden value; pulse-tech tracks what's resonating."
 argument-hint: 'pulse-tech, pulse-tech YC, pulse-tech AI agents, pulse-tech trends'
-allowed-tools: WebSearch, Bash, Read, Write, mcp__agentcash__fetch, mcp__agentcash__get_balance
+allowed-tools: WebSearch, Bash, Read, Write
 user-invocable: true
 metadata:
   openclaw:
@@ -207,7 +207,7 @@ X ({N} posts, top: @{handle} {N} likes) | HN ({N} stories, {N} comments) | GitHu
 
 ---
 
-## Audio Narration (ElevenLabs — paid, ~$0.026/run)
+## Audio Narration (macOS say)
 
 ### Write the script (two segments, ≤140 words each)
 
@@ -217,39 +217,7 @@ X ({N} posts, top: @{handle} {N} likes) | HN ({N} stories, {N} comments) | GitHu
 
 Rules: active voice, present tense, no URLs, no @handles, spell out numbers. ≤140 words per segment.
 
-### Check balance and pick network
-
-Call `mcp__agentcash__get_balance`. Set `CHOSEN_NETWORK`:
-1. `"base"` if balance ≥ $0.03
-2. `"solana"` if Base insufficient
-3. No funds → macOS say fallback
-
-### ElevenLabs TTS
-
-```python
-result1 = mcp__agentcash__fetch(
-    url="https://x402helper.xyz/v1/tools/text-to-speech",
-    method="POST",
-    body={"text": SEGMENT_1},
-    paymentNetwork=CHOSEN_NETWORK,
-    paymentProtocol="x402",
-    maxAmount=0.02
-)
-result2 = mcp__agentcash__fetch(
-    url="https://x402helper.xyz/v1/tools/text-to-speech",
-    method="POST",
-    body={"text": SEGMENT_2},
-    paymentNetwork=CHOSEN_NETWORK,
-    paymentProtocol="x402",
-    maxAmount=0.02
-)
-```
-
-Check `audio` or `audio_base64`. If both succeed → concatenate bytes → save `~/Downloads/pulse-tech-{YYYYMMDD}.mp3` → `afplay`.
-
-If CHOSEN_NETWORK fails: retry with other network. If both fail: macOS say fallback — no diagnosis.
-
-### Fallback: macOS say
+### Generate audio
 
 Write combined narration to `/tmp/pulse-tech-script-$(date +%Y%m%d).txt` with Write tool, then:
 

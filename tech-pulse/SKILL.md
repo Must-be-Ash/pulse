@@ -1,9 +1,9 @@
 ---
 name: tech-pulse
 version: "1.0.0"
-description: "Twitter-first tech intelligence — YC launches, funding signals, technique discoveries, and ecosystem trends. What's getting built and funded, read aloud. Ends with ElevenLabs audio saved to ~/Downloads/."
+description: "Twitter-first tech intelligence — YC launches, funding signals, technique discoveries, and ecosystem trends. What's getting built and funded, read aloud. Ends with audio saved to ~/Downloads/."
 argument-hint: 'tech-pulse, tech-pulse YC, tech-pulse AI agents, tech-pulse knowledge graph'
-allowed-tools: WebSearch, Bash, Read, Write, mcp__agentcash__fetch, mcp__agentcash__get_balance
+allowed-tools: WebSearch, Bash, Read, Write
 user-invocable: true
 metadata:
   openclaw:
@@ -37,7 +37,7 @@ metadata:
 
 # tech-pulse v1.0.0: Builder Intelligence Briefing
 
-> **Source weights:** Twitter/X (primary) → Exa web search → HN front page → GitHub (trend signal) → Reddit (light). Surfaces signals — YC launches, funding, emerging techniques, ecosystem shifts — not tools to install (use `/tools-pulse` for those). Ends with ElevenLabs audio narration saved to `~/Downloads/`.
+> **Source weights:** Twitter/X (primary) → Exa web search → HN front page → GitHub (trend signal) → Reddit (light). Surfaces signals — YC launches, funding, emerging techniques, ecosystem shifts — not tools to install (use `/tools-pulse` for those). Ends with audio narration saved to `~/Downloads/`.
 
 ## Runtime Preflight
 
@@ -235,7 +235,7 @@ KEY PATTERNS:
 
 ---
 
-## Step 7: Audio Narration (ElevenLabs TTS)
+## Step 7: Audio Narration (macOS say)
 
 After displaying the text briefing, generate audio and play it.
 
@@ -255,62 +255,7 @@ Write a broadcast narration split into two segments, each **≤140 words**.
 Rules: active voice, present tense, no URLs, no @handles, no markdown, no numbers as digits.
 Count words. Trim to ≤140 per segment.
 
-### 7.2 — Check balance and pick network
-
-```
-NETWORK_PRIORITY:
-1. "base"    — prefer if balance ≥ $0.03 USDC
-2. "solana"  — try if Base is insufficient
-3. no funds  — skip to Step 7.4 (say fallback)
-```
-
-Call `mcp__agentcash__get_balance`. Set `CHOSEN_NETWORK`.
-
-### 7.3 — Attempt ElevenLabs TTS (paid)
-
-- URL: `https://x402helper.xyz/v1/tools/text-to-speech`
-- `paymentProtocol`: `"x402"`
-- `paymentNetwork`: `CHOSEN_NETWORK`
-- `maxAmount`: `0.02`
-- Body: `{"text": "..."}` — ≤140 words per segment
-
-```python
-result1 = mcp__agentcash__fetch(
-    url="https://x402helper.xyz/v1/tools/text-to-speech",
-    method="POST",
-    body={"text": SEGMENT_1},
-    paymentNetwork=CHOSEN_NETWORK,
-    paymentProtocol="x402",
-    maxAmount=0.02
-)
-
-result2 = mcp__agentcash__fetch(
-    url="https://x402helper.xyz/v1/tools/text-to-speech",
-    method="POST",
-    body={"text": SEGMENT_2},
-    paymentNetwork=CHOSEN_NETWORK,
-    paymentProtocol="x402",
-    maxAmount=0.02
-)
-```
-
-Check response for `audio` or `audio_base64` key. If both calls succeed:
-
-```python
-import base64, datetime
-date = datetime.date.today().strftime('%Y%m%d')
-path = f"/Users/ashnouruzi/Downloads/tech-pulse-{date}.mp3"
-with open(path, 'wb') as f:
-    f.write(base64.b64decode(result1.get('audio') or result1.get('audio_base64')))
-    f.write(base64.b64decode(result2.get('audio') or result2.get('audio_base64')))
-```
-
-Play: `afplay "/Users/ashnouruzi/Downloads/tech-pulse-$(date +%Y%m%d).mp3"`
-
-**If payment fails on CHOSEN_NETWORK and other network has balance:** retry with other network.
-**If both fail:** go to Step 7.4. No diagnosis, no retrying.
-
-### 7.4 — Fallback: macOS say
+### 7.2 — Generate audio with macOS say
 
 ```bash
 DATE=$(date +%Y%m%d)
@@ -321,12 +266,11 @@ say -v Samantha -r 175 -o "${OUTFILE}" -f "${SCRIPT_FILE}"
 afplay "${OUTFILE}"
 ```
 
-### 7.5 — Confirm
+### 7.3 — Confirm
 
 ```
-🎙 Audio saved: ~/Downloads/tech-pulse-{YYYYMMDD}.mp3 (~120s, ~$0.026 USDC via {CHOSEN_NETWORK})
+🔊 Audio saved: ~/Downloads/tech-pulse-{YYYYMMDD}.aiff
 ```
-or: `🔊 Audio (fallback): ~/Downloads/tech-pulse-{YYYYMMDD}.aiff`
 
 ---
 
